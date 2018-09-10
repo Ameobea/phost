@@ -1,7 +1,6 @@
 from subprocess import CalledProcessError
 import shutil
 
-from django.shortcuts import render
 from django.http import (
     HttpResponse,
     JsonResponse,
@@ -9,6 +8,7 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseServerError,
 )
+from django.core import serializers
 from django.http.request import HttpRequest
 from django.db import transaction
 from django.db.utils import IntegrityError
@@ -23,8 +23,10 @@ def index(_req):
 
 
 def deployments(_req):
-    deployments = StaticDeployment.objects.all()
-    return JsonResponse(list(deployments), safe=False)
+    all_deployments = StaticDeployment.objects.all()
+    return HttpResponse(
+        serializers.serialize("json", all_deployments), content_type="application/json"
+    )
 
 
 def create_static_deployment(request: HttpRequest):
