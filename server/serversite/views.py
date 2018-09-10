@@ -11,6 +11,7 @@ from django.http import (
 )
 from django.http.request import HttpRequest
 from django.db import transaction
+from django.db.utils import IntegrityError
 
 from .models import StaticDeployment, DeploymentVersion
 from .forms import StaticDeploymentForm
@@ -54,14 +55,16 @@ def create_static_deployment(request: HttpRequest):
     try:
         with transaction.atomic():
             deployment_descriptor = StaticDeployment(name=name, subdomain=subdomain)
-            version = DeploymentVersion(version=version, deployment=deployment_descriptor)
-
             deployment_descriptor.save()
-            version.save()
-    except Exception as e:
-        print(e)
+            version_model = DeploymentVersion(version=version, deployment=deployment_descriptor)
+            version_model.save()
+    except IntegrityError as e:
         # Delete the created host directory and return an error
         shutil.rmtree(host_dir)
+
+        if "Duplicate entry" in str(e):
+            return HttpResponseBadRequest("`name` and `subdomain` must be unique!")
+
         return HttpResponseServerError(
             "There was an error while inserting the static deployment into the catalogue"
         )

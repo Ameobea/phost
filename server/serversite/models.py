@@ -1,5 +1,4 @@
 from django.db import models
-from django.template.defaultfilters import slugify
 from django.conf import settings
 
 
@@ -10,12 +9,7 @@ class StaticDeployment(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
 
     def get_url(self) -> str:
-        "{}://{}.{}/".format(settings.PROTOCOL, self.subdomain, settings.ROOT_URL)
-
-    def save(self, *args, **kwargs):
-        if not self.subdomain:
-            self.subdomain = slugify(self.name)
-            super(StaticDeployment, self).save(*args, **kwargs)
+        return "{}://{}.{}/".format(settings.PROTOCOL, self.subdomain, settings.ROOT_URL)
 
     class Meta:
         ordering = ["created_on"]
