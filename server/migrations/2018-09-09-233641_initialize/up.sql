@@ -1,0 +1,7 @@
+CREATE TABLE static_deployments
+(
+  id MEDIUMINT NOT NULL AUTO_INCREMENT,
+  deployment_name VARCHAR(64) NOT NULL UNIQUE,
+  subdomain VARCHAR(64) NOT NULL UNIQUE,
+  PRIMARY KEY (id)
+);
