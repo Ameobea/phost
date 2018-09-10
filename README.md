@@ -5,5 +5,5 @@
 ## Installation
 
  * Run `virtualenv env`
- * Run `. /env/bin/activate`
+ * Run `. env/bin/activate`
  * Run `pip install -r server/requirements.txt`

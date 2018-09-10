@@ -4,8 +4,9 @@ from django.conf import settings
 
 
 class StaticDeployment(models.Model):
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255, unique=True)
-    subdomain = models.SlugField(unique=True, max_length=64)
+    subdomain = models.SlugField(unique=True, max_length=255)
     created_on = models.DateTimeField(auto_now_add=True)
 
     def get_url(self) -> str:
@@ -24,6 +25,7 @@ class StaticDeployment(models.Model):
 
 
 class DeploymentVersion(models.Model):
+    id = models.AutoField(primary_key=True)
     version = models.CharField(max_length=32)
     created_on = models.DateTimeField(auto_now_add=True)
     deployment = models.ForeignKey(StaticDeployment, on_delete=models.CASCADE)
