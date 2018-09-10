@@ -1,5 +1,7 @@
 use super::schema::static_deployments;
 
+pub mod internal;
+
 #[derive(Queryable)]
 pub struct StaticDeployment {
     pub id: i32,
