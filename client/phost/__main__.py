@@ -7,8 +7,8 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from terminaltables import SingleTable
 import dateutil.parser
 
-from config import load_conf
-from upload import compress_dir
+from .config import load_conf
+from .upload import compress_dir
 
 
 def make_request(method: str, *args, json=None, multipart_data=None):
@@ -107,9 +107,24 @@ def create(name, subdomain, directory, version):
     print("Deployment successfully created: {}".format(res["url"]))
 
 
-if __name__ == "__main__":
-    logging.getLogger("requests").setLevel(logging.CRITICAL)
-    logging.getLogger("urllib3").setLevel(logging.CRITICAL)
-    STATE = GlobalAppState()
+@main.command()
+@click.argument("name")
+@click.option(
+    "--version",
+    "-v",
+    default=None,
+    help=(
+        "If supplied, only this version will be deleted.  "
+        "If not supplied, all versions will be deleted."
+    ),
+)
+def delete(name, version):
+    # TODO: prompt user if they're sure they want to delete
+    raise Exception("Not yet implemented!")
 
-    main()
+
+logging.getLogger("requests").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
+STATE = GlobalAppState()
+
+main()
