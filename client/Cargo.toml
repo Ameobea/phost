@@ -1,7 +1,0 @@
-[package]
-name = "client"
-version = "0.1.0"
-authors = ["Casey Primozic <me@ameo.link>"]
-
-[dependencies]
-tui = "0.3.0-beta.1"
