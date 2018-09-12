@@ -9,6 +9,7 @@ RUN ln /usr/bin/python3 /usr/bin/python
 RUN apt-get -y install python3-pip
 RUN ln /usr/bin/pip3 /usr/bin/pip
 RUN mkdir /var/www/hosted
+RUN chown -R www-data /var/www/hosted
 
 RUN pip install --upgrade pip
 
