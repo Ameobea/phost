@@ -30,7 +30,7 @@ SECRET_KEY = ")22)a7uoo6b)_diu(01&c=jdkvv(fby#^1j#yl-laif#k&!=3n"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["ameo.design"]
+ALLOWED_HOSTS = ['localhost:7645', 'localhost']
 
 
 # Application definition
