@@ -13,6 +13,10 @@ class StaticDeployment(models.Model):
     def get_url(self) -> str:
         return "{}://{}.{}/".format(settings.PROTOCOL, self.subdomain, settings.ROOT_URL)
 
+    def save(self, *args, **kwargs):
+        self.subdomain = self.subdomain.lower()
+        return super(StaticDeployment, self).save(*args, **kwargs)
+
     class Meta:
         ordering = ["created_on"]
 
@@ -25,6 +29,10 @@ class DeploymentVersion(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
     deployment = models.ForeignKey(StaticDeployment, on_delete=models.CASCADE)
     active = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        self.version = self.version.lower()
+        return super(DeploymentVersion, self).save(*args, **kwargs)
 
     class Meta:
         ordering = ["created_on"]

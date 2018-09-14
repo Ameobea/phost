@@ -1,23 +1,19 @@
+from functools import partial
+
 from django.core import serializers
+from django.db.models import QuerySet
 from django.http import JsonResponse
 
 
-def serialize_model(model, json_response=True):
-    data = serializers.serialize("python", [model])[0]
-    serialized = {"id": data["pk"], **data["fields"]}
-
-    if json_response:
-        return JsonResponse(serialized, safe=False)
+def serialize(model, json=True):
+    serialized = None
+    if isinstance(model, list) or isinstance(model, QuerySet):
+        serialized = list(map(partial(serialize, json=False), model))
     else:
-        return serialized
+        data = serializers.serialize("python", [model])[0]
+        serialized = {"id": data["pk"], **data["fields"]}
 
-
-def serialize_models(models, json_response=True):
-    data = serializers.serialize("python", models)
-    serialized = list(map(lambda datum: {"id": datum["pk"], **datum["fields"]}, data))
-    print(serialized)
-
-    if json_response:
+    if json:
         return JsonResponse(serialized, safe=False)
     else:
         return serialized

@@ -1,6 +1,3 @@
-from subprocess import CalledProcessError
-import shutil
-
 from django.http import (
     HttpResponse,
     JsonResponse,
@@ -16,145 +13,169 @@ from django.views.generic import TemplateView
 
 from .models import StaticDeployment, DeploymentVersion
 from .forms import StaticDeploymentForm, StaticDeploymentVersionForm
-from .upload import handle_uploaded_static_archive
-from .serialize import serialize_model, serialize_models
+from .upload import (
+    handle_uploaded_static_archive,
+    update_symlink,
+    delete_hosted_deployment,
+    delete_hosted_version,
+)
+from .serialize import serialize
+from .validation import BadInputException, validate_deployment_name, get_validated_form, NotFound
 
 
-def index(_req):
-    return HttpResponse("Site is up and running!  Try `GET /deployments`.")
+def with_caught_exceptions(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except BadInputException as e:
+            return HttpResponseBadRequest(str(e))
+        except NotFound:
+            return HttpResponseNotFound()
+        except Exception as e:
+            print("Uncaught error: {}".format(str(e)))
+            return HttpResponseServerError("An unhandled error occured while handling the request")
 
-
-def get_or_none(Model, **kwargs):
-    try:
-        return Model.objects.get(**kwargs)
-    except Model.DoesNotExist:
-        return None
+    return wrapper
 
 
 @require_GET
-def get_deployment(_req: HttpRequest, deployment_id=None):
-    deployment = StaticDeployment.objects.get(id=deployment_id)
-    if deployment is None:
-        return HttpResponseNotFound()
-
-    return serialize_model(deployment)
+def index(_req: HttpRequest):
+    return HttpResponse("Site is up and running!  Try `GET /deployments`.")
 
 
-class DeploymentVersionView(TemplateView):
-    def get(
-        self, request: HttpRequest, *args, deployment_id=None, version=None, **kwargs
-    ):  # pylint: disable=W0221
+def get_or_none(Model, do_raise=True, **kwargs):
+    """ Lookups a model given some query parameters.  If a match is found, it is returned.
+    Otherwise, either `None` is returned or a `NotFound` exception is raised depending on
+    the value of `do_raise`. """
+
+    try:
+        return Model.objects.get(**kwargs)
+    except Model.DoesNotExist:
+        if do_raise:
+            raise NotFound()
+        else:
+            return None
+
+
+class Deployment(TemplateView):
+    @with_caught_exceptions
+    def get(self, _req: HttpRequest, deployment_id=None):
         deployment = get_or_none(StaticDeployment, id=deployment_id)
-        if deployment is None:
-            return HttpResponseNotFound()
+        versions = DeploymentVersion.objects.filter(deployment=deployment)
 
-        version = get_or_none(DeploymentVersion, deployment=deployment, version=version)
-        if version is None:
-            return HttpResponseNotFound()
-        print(version)
+        deployment_data = serialize(deployment, json=False)
+        versions_data = serialize(versions, json=False)
+        versions_list = list(map(lambda version_datum: version_datum["version"], versions_data))
+        deployment_data["versions"] = versions_list
 
-        return serialize_model(version)
+        return JsonResponse(deployment_data, safe=False)
 
-    def post(self, request: HttpRequest, *args, deployment_id=None, version=None, **kwargs):
-        form = StaticDeploymentVersionForm(request.POST, request.FILES)
-        if not form.is_valid():
-            return HttpResponseBadRequest(
-                "Invalid fields provided to the static deployment version creation form"
-            )
+    @with_caught_exceptions
+    def delete(self, request: HttpRequest, deployment_id=None):
+        with transaction.atomic():
+            deployment = get_or_none(StaticDeployment, id=deployment_id)
+            deployment_data = serialize(deployment, json=False)
+            # This will also recursively delete all attached versions
+            deployment.delete()
 
-        deployment = get_or_none(StaticDeployment, id=deployment_id)
-        if deployment is None:
-            return HttpResponseNotFound()
+            delete_hosted_deployment(deployment_data["name"])
 
-        host_dir = None
-        try:
-            host_dir = handle_uploaded_static_archive(
-                request.FILES["file"], deployment.name, version
-            )
-        except CalledProcessError:
-            return HttpResponseBadRequest(
-                "Error while decompressing the provided archive .tgz file"
-            )
-        except Exception as e:
-            print(e)
-            return HttpResponseBadRequest(
-                "The provided archive was missing, invalid, or there was a problem extracting it."
-            )
-
-        try:
-            with transaction.atomic():
-                # Set any old active deployment as inactive
-                old_version = DeploymentVersion.objects.get(deployment=deployment, active=True)
-                if old_version:
-                    old_version.update(active=False)
-                # Create the new version and set it active
-                DeploymentVersion(version=version, deployment=deployment, active=True).save()
-        except IntegrityError:
-            # Delete the created host directory and return an error
-            shutil.rmtree(host_dir)
-
-            return HttpResponseServerError(
-                "There was an error while inserting the static deployment into the catalogue"
-            )
-
-        return serialize_model(version)
+        return HttpResponse("Deployment successfully deleted")
 
 
 class Deployments(TemplateView):
-    def get(self, request: HttpRequest, *args, **kwargs):
+    @with_caught_exceptions
+    def get(self, request: HttpRequest):
         all_deployments = StaticDeployment.objects.all()
-        return serialize_models(all_deployments)
+        return serialize(all_deployments)
 
-    def post(self, request: HttpRequest, *args, **kwargs):
-        form = StaticDeploymentForm(request.POST, request.FILES)
-        if not form.is_valid():
-            return HttpResponseBadRequest(
-                "Invalid fields provided to the static deployment creation form"
-            )
+    @with_caught_exceptions
+    def post(self, request: HttpRequest):
+        form = get_validated_form(StaticDeploymentForm, request)
 
-        host_dir = None
-        name = form.cleaned_data["name"]
+        deployment_name = form.cleaned_data["name"]
         subdomain = form.cleaned_data["subdomain"]
         version = form.cleaned_data["version"]
-        try:
-            host_dir = handle_uploaded_static_archive(request.FILES["file"], name, version)
-        except CalledProcessError:
-            return HttpResponseBadRequest(
-                "Error while decompressing the provided archive .tgz file"
-            )
-        except Exception as e:
-            print(e)
-            return HttpResponseBadRequest(
-                "The provided archive was missing, invalid, or there was a problem extracting it."
-            )
+        validate_deployment_name(deployment_name)
 
         deployment_descriptor = None
         try:
             with transaction.atomic():
                 # Create the new deployment descriptor
-                deployment_descriptor = StaticDeployment(name=name, subdomain=subdomain)
+                deployment_descriptor = StaticDeployment(name=deployment_name, subdomain=subdomain)
                 deployment_descriptor.save()
+
                 # Create the new version and set it as active
                 version_model = DeploymentVersion(
                     version=version, deployment=deployment_descriptor, active=True
                 )
                 version_model.save()
+
+                handle_uploaded_static_archive(request.FILES["file"], deployment_name, version)
         except IntegrityError as e:
-            # Delete the created host directory and return an error
-            shutil.rmtree(host_dir)
-
             if "Duplicate entry" in str(e):
-                return HttpResponseBadRequest("`name` and `subdomain` must be unique!")
-
-            return HttpResponseServerError(
-                "There was an error while inserting the static deployment into the catalogue"
-            )
+                raise BadInputException("`name` and `subdomain` must be unique!")
+            else:
+                raise e
 
         return JsonResponse(
             {
-                "name": name,
+                "name": deployment_name,
                 "subdomain": subdomain,
                 "version": version,
                 "url": deployment_descriptor.get_url(),
             }
         )
+
+
+class DeploymentVersionView(TemplateView):
+    @with_caught_exceptions
+    def get(
+        self, request: HttpRequest, *args, deployment_id=None, version=None
+    ):  # pylint: disable=W0221
+        deployment = get_or_none(StaticDeployment, id=deployment_id)
+        version = get_or_none(DeploymentVersion, deployment=deployment, version=version)
+        return serialize(version)
+
+    @with_caught_exceptions
+    def post(self, request: HttpRequest, *args, deployment_id=None, version=None):
+        get_validated_form(StaticDeploymentVersionForm, request)
+        deployment = get_or_none(StaticDeployment, id=deployment_id)
+
+        with transaction.atomic():
+            # Set any old active deployment as inactive
+            old_version = DeploymentVersion.objects.get(deployment=deployment, active=True)
+            if old_version:
+                old_version.update(active=False)
+
+            # Create the new version and set it active
+            DeploymentVersion(version=version, deployment=deployment, active=True).save()
+
+            deployment_data = serialize(deployment, json=False)
+
+            # Extract the supplied archive into the hosting directory
+            handle_uploaded_static_archive(request.FILES["file"], deployment_data["name"], version)
+            # Update the `latest` version to point to this new version
+            update_symlink(deployment_data["name"], version)
+
+        return serialize(version)
+
+    @with_caught_exceptions
+    def delete(self, request: HttpRequest, deployment_id=None, version=None):
+        with transaction.atomic():
+            deployment = get_or_none(StaticDeployment, id=deployment_id)
+            # Delete the entry for the deployment version from the database
+            DeploymentVersion.objects.filter(deployment=deployment, version=version).delete()
+            # If no deployment versions remain for the owning deployment, delete the deployment
+            delete_deployment = False
+            if not DeploymentVersion.filter(deployment=deployment):
+                delete_deployment = True
+                deployment.delete()
+
+            if delete_deployment:
+                delete_hosted_deployment(deployment)
+            else:
+                deployment_data = serialize(deployment, json=False)
+                delete_hosted_version(deployment_data["name"], version)
+
+        return HttpResponse("Deployment version successfully deleted")

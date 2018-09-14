@@ -9,6 +9,7 @@ import dateutil.parser
 
 from .config import load_conf
 from .upload import compress_dir
+from .util import compose
 
 
 def make_request(method: str, *args, json=None, multipart_data=None):
@@ -55,13 +56,7 @@ class PhostApp(npyscreen.NPSApp):
         pass
 
 
-@click.group()
-def main():
-    pass
-
-
-@main.command()
-def list():
+def list_deployments():
     deployments = STATE.api_call("deployments/")
     table_headers = ["Name", "URL", "Creation Date"]
     table_data = map(
@@ -87,7 +82,52 @@ def list():
     print(table.table)
 
 
-@main.command()
+@click.group()
+def main():
+    pass
+
+
+@main.group("deployment")
+def deployment():
+    pass
+
+
+delete_deployment_decorators = compose(
+    click.argument("name"),
+    click.option(
+        "--version",
+        "-v",
+        default=None,
+        help=(
+            "If supplied, only this version will be deleted.  "
+            "If not supplied, all versions will be deleted."
+        ),
+    ),
+)
+
+
+@deployment.command("list")
+def list_deployments_deployment():
+    list_deployments()
+
+
+@main.command("list")
+def list_deployments_main():
+    list_deployments()
+
+
+@deployment.command("delete")
+@delete_deployment_decorators
+def delete_deployment_deployment(name, version):
+    pass  # TODO
+
+
+@main.command("delete")
+@delete_deployment_decorators
+def delete_deployment_main(name, version):
+    pass  # TODO
+
+
 @click.argument("name")
 @click.argument("subdomain")
 @click.argument("directory")
@@ -105,22 +145,6 @@ def create(name, subdomain, directory, version):
 
     res = STATE.api_call("deployments/", method="POST", multipart_data=multipart_data)
     print("Deployment successfully created: {}".format(res["url"]))
-
-
-@main.command()
-@click.argument("name")
-@click.option(
-    "--version",
-    "-v",
-    default=None,
-    help=(
-        "If supplied, only this version will be deleted.  "
-        "If not supplied, all versions will be deleted."
-    ),
-)
-def delete(name, version):
-    # TODO: prompt user if they're sure they want to delete
-    raise Exception("Not yet implemented!")
 
 
 logging.getLogger("requests").setLevel(logging.CRITICAL)
