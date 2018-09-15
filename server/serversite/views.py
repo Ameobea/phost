@@ -1,3 +1,5 @@
+import traceback
+
 from django.http import (
     HttpResponse,
     JsonResponse,
@@ -12,7 +14,7 @@ from django.views.decorators.http import require_GET
 from django.views.generic import TemplateView
 
 from .models import StaticDeployment, DeploymentVersion
-from .forms import StaticDeploymentForm, StaticDeploymentVersionForm
+from .forms import StaticDeploymentForm
 from .upload import (
     handle_uploaded_static_archive,
     update_symlink,
@@ -33,7 +35,21 @@ def with_caught_exceptions(func):
             return HttpResponseNotFound()
         except Exception as e:
             print("Uncaught error: {}".format(str(e)))
-            return HttpResponseServerError("An unhandled error occured while handling the request")
+            traceback.print_exc()
+
+            return HttpResponseServerError(
+                "An unhandled error occured while processing the request"
+            )
+
+    return wrapper
+
+
+def with_default_success(func):
+    """ Decorator that returns a JSON success message if no errors occur during the request. """
+
+    def wrapper(*args, **kwargs):
+        func(*args, **kwargs)
+        return JsonResponse({"success": True, "error": False})
 
     return wrapper
 
@@ -57,37 +73,20 @@ def get_or_none(Model, do_raise=True, **kwargs):
             return None
 
 
-class Deployment(TemplateView):
-    @with_caught_exceptions
-    def get(self, _req: HttpRequest, deployment_id=None):
-        deployment = get_or_none(StaticDeployment, id=deployment_id)
-        versions = DeploymentVersion.objects.filter(deployment=deployment)
-
-        deployment_data = serialize(deployment, json=False)
-        versions_data = serialize(versions, json=False)
-        versions_list = list(map(lambda version_datum: version_datum["version"], versions_data))
-        deployment_data["versions"] = versions_list
-
-        return JsonResponse(deployment_data, safe=False)
-
-    @with_caught_exceptions
-    def delete(self, request: HttpRequest, deployment_id=None):
-        with transaction.atomic():
-            deployment = get_or_none(StaticDeployment, id=deployment_id)
-            deployment_data = serialize(deployment, json=False)
-            # This will also recursively delete all attached versions
-            deployment.delete()
-
-            delete_hosted_deployment(deployment_data["name"])
-
-        return HttpResponse("Deployment successfully deleted")
-
-
 class Deployments(TemplateView):
     @with_caught_exceptions
     def get(self, request: HttpRequest):
-        all_deployments = StaticDeployment.objects.all()
-        return serialize(all_deployments)
+        all_deployments = StaticDeployment.objects.prefetch_related("deploymentversion_set").all()
+        deployments_data = serialize(all_deployments, json=False)
+        deployments_data_with_versions = [
+            {
+                **datum,
+                "versions": serialize(deployment_models.deploymentversion_set.all(), json=False),
+            }
+            for (datum, deployment_models) in zip(deployments_data, all_deployments)
+        ]
+
+        return JsonResponse(deployments_data_with_versions, safe=False)
 
     @with_caught_exceptions
     def post(self, request: HttpRequest):
@@ -128,47 +127,100 @@ class Deployments(TemplateView):
         )
 
 
+def get_query_dict(query_string: str, req: HttpRequest) -> dict:
+    lookup_field = req.GET.get("lookupField", "id")
+    if lookup_field not in ["id", "subdomain", "name"]:
+        raise BadInputException("The supplied `lookupField` was invalid")
+
+    return {lookup_field: query_string}
+
+
+class Deployment(TemplateView):
+    @with_caught_exceptions
+    def get(self, req: HttpRequest, deployment_id=None):
+        query_dict = get_query_dict(deployment_id, req)
+        deployment = get_or_none(StaticDeployment, **query_dict)
+        versions = DeploymentVersion.objects.filter(deployment=deployment)
+        active_version = next(v for v in versions if v.active)
+
+        deployment_data = serialize(deployment, json=False)
+        versions_data = serialize(versions, json=False)
+        versions_list = list(map(lambda version_datum: version_datum["version"], versions_data))
+
+        deployment_data = {
+            **deployment_data,
+            "versions": versions_list,
+            "active_version": serialize(active_version, json=False)["version"],
+        }
+
+        return JsonResponse(deployment_data, safe=False)
+
+    @with_caught_exceptions
+    @with_default_success
+    def delete(self, req: HttpRequest, deployment_id=None):
+        with transaction.atomic():
+            query_dict = get_query_dict(deployment_id, req)
+            deployment = get_or_none(StaticDeployment, **query_dict)
+            deployment_data = serialize(deployment, json=False)
+            # This will also recursively delete all attached versions
+            deployment.delete()
+
+            delete_hosted_deployment(deployment_data["name"])
+
+
 class DeploymentVersionView(TemplateView):
     @with_caught_exceptions
     def get(
-        self, request: HttpRequest, *args, deployment_id=None, version=None
+        self, req: HttpRequest, *args, deployment_id=None, version=None
     ):  # pylint: disable=W0221
-        deployment = get_or_none(StaticDeployment, id=deployment_id)
-        version = get_or_none(DeploymentVersion, deployment=deployment, version=version)
-        return serialize(version)
+        query_dict = get_query_dict(deployment_id, req)
+        deployment = get_or_none(StaticDeployment, **query_dict)
+        version_model = get_or_none(DeploymentVersion, deployment=deployment, version=version)
+        return serialize(version_model)
 
     @with_caught_exceptions
-    def post(self, request: HttpRequest, *args, deployment_id=None, version=None):
-        get_validated_form(StaticDeploymentVersionForm, request)
-        deployment = get_or_none(StaticDeployment, id=deployment_id)
+    def post(self, req: HttpRequest, *args, deployment_id=None, version=None):
+        query_dict = get_query_dict(deployment_id, req)
+        deployment = get_or_none(StaticDeployment, **query_dict)
 
+        # Assert that the new version is unique among other versions for the same deployment
+        if DeploymentVersion.objects.filter(deployment=deployment, version=version):
+            raise BadInputException("The new version name must be unique.")
+
+        version_model = None
         with transaction.atomic():
             # Set any old active deployment as inactive
             old_version = DeploymentVersion.objects.get(deployment=deployment, active=True)
             if old_version:
-                old_version.update(active=False)
+                old_version.active = False
+                old_version.save()
 
             # Create the new version and set it active
-            DeploymentVersion(version=version, deployment=deployment, active=True).save()
+            version_model = DeploymentVersion(version=version, deployment=deployment, active=True)
+            version_model.save()
 
             deployment_data = serialize(deployment, json=False)
 
             # Extract the supplied archive into the hosting directory
-            handle_uploaded_static_archive(request.FILES["file"], deployment_data["name"], version)
+            handle_uploaded_static_archive(
+                req.FILES["file"], deployment_data["name"], version, init=False
+            )
             # Update the `latest` version to point to this new version
             update_symlink(deployment_data["name"], version)
 
-        return serialize(version)
+        return serialize(version_model)
 
     @with_caught_exceptions
-    def delete(self, request: HttpRequest, deployment_id=None, version=None):
+    @with_default_success
+    def delete(self, req: HttpRequest, deployment_id=None, version=None):
         with transaction.atomic():
-            deployment = get_or_none(StaticDeployment, id=deployment_id)
+            query_dict = get_query_dict(deployment_id, req)
+            deployment = get_or_none(StaticDeployment, **query_dict)
             # Delete the entry for the deployment version from the database
             DeploymentVersion.objects.filter(deployment=deployment, version=version).delete()
             # If no deployment versions remain for the owning deployment, delete the deployment
             delete_deployment = False
-            if not DeploymentVersion.filter(deployment=deployment):
+            if not DeploymentVersion.objects.filter(deployment=deployment):
                 delete_deployment = True
                 deployment.delete()
 
@@ -177,5 +229,3 @@ class DeploymentVersionView(TemplateView):
             else:
                 deployment_data = serialize(deployment, json=False)
                 delete_hosted_version(deployment_data["name"], version)
-
-        return HttpResponse("Deployment version successfully deleted")

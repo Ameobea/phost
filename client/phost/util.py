@@ -53,6 +53,10 @@ def compose(*wrappers):
     return lambda func: Composition(func, wrappers)
 
 
+def slugify(s: str) -> str:
+    return s.lower().replace(" ", "-").replace(".", "_")
+
+
 def test_compose():
     def wrap(i: int):
         def wrapper(func):
