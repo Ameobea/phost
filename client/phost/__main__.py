@@ -206,14 +206,13 @@ def delete_deployment_main(query, lookup_field, version):
 
 def create_deployment(name, subdomain, directory, version, random_subdomain):
     if random_subdomain:
-        if subdomain:
+        if subdomain is None:
+            subdomain = create_random_subdomain()
+        else:
             print("Can't supply both `--random-subdomain` and an explicit subdomain")
             exit(1)
-
-    if not subdomain:
+    elif not subdomain:
         subdomain = slugify(name)
-
-        subdomain = create_random_subdomain()
 
     # Compress the target directory into a tempfile .tgz archive
     tgz_file = compress_dir(directory)

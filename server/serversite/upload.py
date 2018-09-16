@@ -44,7 +44,7 @@ def update_symlink(deployment_name: str, new_version: str):
     os.symlink(os.path.join(HOST_DIR, deployment_name, new_version), link_path)
 
 
-def handle_uploaded_static_archive(file, deployment_name: str, version: str, init=True) -> str:
+def handle_uploaded_static_archive(file, subdomain: str, version: str, init=True) -> str:
     """
     Writes the archive to a temporary file and attempts to extract it to the project directory.
     Raises an exception if the extraction process was unsuccessful.
@@ -56,11 +56,11 @@ def handle_uploaded_static_archive(file, deployment_name: str, version: str, ini
             print(len(chunk))
             tf.write(chunk)
 
-        dst_dir = os.path.join(HOST_DIR, deployment_name, version)
+        dst_dir = os.path.join(HOST_DIR, subdomain, version)
         pathlib.Path(dst_dir).mkdir(parents=True, exist_ok=True)
         if init:
             if version != "latest":
-                os.symlink(dst_dir, os.path.join(HOST_DIR, deployment_name, "latest"))
+                os.symlink(dst_dir, os.path.join(HOST_DIR, subdomain, "latest"))
 
         # Extract the archive into the hosting directory
         temp_filename = tf.name

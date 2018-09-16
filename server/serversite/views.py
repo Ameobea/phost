@@ -96,6 +96,7 @@ class Deployments(TemplateView):
         subdomain = form.cleaned_data["subdomain"]
         version = form.cleaned_data["version"]
         validate_deployment_name(deployment_name)
+        validate_subdomain(subdomain)
 
         deployment_descriptor = None
         try:
@@ -110,7 +111,7 @@ class Deployments(TemplateView):
                 )
                 version_model.save()
 
-                handle_uploaded_static_archive(request.FILES["file"], deployment_name, version)
+                handle_uploaded_static_archive(request.FILES["file"], subdomain, version)
         except IntegrityError as e:
             if "Duplicate entry" in str(e):
                 raise BadInputException("`name` and `subdomain` must be unique!")
@@ -203,7 +204,7 @@ class DeploymentVersionView(TemplateView):
 
             # Extract the supplied archive into the hosting directory
             handle_uploaded_static_archive(
-                req.FILES["file"], deployment_data["name"], version, init=False
+                req.FILES["file"], deployment_data["subomain"], version, init=False
             )
             # Update the `latest` version to point to this new version
             update_symlink(deployment_data["name"], version)
