@@ -2,8 +2,8 @@ import logging
 import traceback
 import json
 from typing import List
+import os
 
-import npyscreen
 import click
 import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
@@ -15,12 +15,12 @@ from .upload import compress_dir
 from .util import compose, slugify, create_random_subdomain
 
 
-def make_request(method: str, *args, json=None, multipart_data=None):
+def make_request(method: str, *args, json_body=None, multipart_data=None):
     (func, kwargs) = {
-        "POST": (requests.post, {"json": json, "files": multipart_data}),
+        "POST": (requests.post, {"json": json_body, "files": multipart_data}),
         "GET": (requests.get, {}),
-        "PUT": (requests.put, {"json": json}),
-        "PATCH": (requests.patch, {"json": json}),
+        "PUT": (requests.put, {"json": json_body}),
+        "PATCH": (requests.patch, {"json": json_body}),
         "DELETE": (requests.delete, {}),
     }[method.upper()]
 
@@ -34,8 +34,8 @@ class PhostServerError(Exception):
 class GlobalAppState(object):
     """ What it says on the tin. """
 
-    def __init__(self):
-        self.conf = load_conf()
+    def __init__(self, config_file):
+        self.conf = load_conf(config_file)
 
     def api_call(self, resource_path: str, method="GET", **kwargs):
         try:
@@ -72,11 +72,6 @@ class GlobalAppState(object):
 
 
 STATE = None
-
-
-class PhostApp(npyscreen.NPSApp):
-    def main(self):
-        pass
 
 
 def list_deployments():
@@ -135,8 +130,15 @@ def delete_deployment(query, lookup_field, version):
 
 
 @click.group()
-def main():
-    pass
+@click.option(
+    "--config",
+    "-c",
+    type=click.File(encoding="utf-8"),
+    default=os.path.expanduser("~/.phost/conf.toml"),
+)
+def main(config):
+    global STATE  # pylint: disable=W0603
+    STATE = GlobalAppState(config)
 
 
 @main.group("deployment")
@@ -293,12 +295,12 @@ def update_deployment_main(query, lookup_field, version, directory):
 @with_query_lookup_decorators
 @deployment.command("show")
 def show_deployment(query, lookup_field):
-    deployment = STATE.api_call("deployments/{}/?lookupField={}".format(query, lookup_field))
-    print(json.dumps(deployment, indent=4))
+    deployment_data = STATE.api_call("deployments/{}/?lookupField={}".format(query, lookup_field))
+    print(json.dumps(deployment_data, indent=4))
 
 
 logging.getLogger("requests").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
-STATE = GlobalAppState()
 
-main()
+main()  # pylint: disable=E1120
+

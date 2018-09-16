@@ -16,14 +16,19 @@ from .validation import BadInputException
 HOST_DIR = settings.HOST_PATH
 
 
+def delete_dir_if_exists(dir_path: str):
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+
+
 def delete_hosted_version(deployment_name: str, version: str):
     version_dir = os.path.join(HOST_DIR, deployment_name, version)
-    shutil.rmtree(version_dir)
+    delete_dir_if_exists(version_dir)
 
 
 def delete_hosted_deployment(deployment_name: str):
     deployment_dir = os.path.join(HOST_DIR, deployment_name)
-    shutil.rmtree(deployment_dir)
+    delete_dir_if_exists(deployment_dir)
 
 
 def update_symlink(deployment_name: str, new_version: str):

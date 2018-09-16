@@ -9,7 +9,7 @@ DEFAULT_CONF = {
 }
 
 
-def init_config() -> str:
+def init_config():
     config_dir_path = os.path.join(os.path.expanduser("~"), ".phost")
     pathlib.Path(config_dir_path).mkdir(parents=False, exist_ok=True)
 
@@ -20,15 +20,16 @@ def init_config() -> str:
         with open(conf_file_path, "w") as f:
             f.write(default_conf_toml)
 
-    return conf_file_path
+    return open(conf_file_path, "r")
 
 
-def load_conf() -> dict:
-    # Initialize the config directory and config file with defaults if they don't exist
-    conf_file_path = init_config()
+def load_conf(conf_file) -> dict:
+    conf_file = conf_file or init_config()
+    conf_toml = conf_file.read()
+    conf_file.close()
 
-    conf_toml = None
-    with open(conf_file_path, "r") as f:
-        conf_toml = f.read()
-
-    return toml.loads(conf_toml)
+    try:
+        return toml.loads(conf_toml)
+    except toml.TomlDecodeError:
+        print("Error reading supplied config file!")
+        exit(1)
