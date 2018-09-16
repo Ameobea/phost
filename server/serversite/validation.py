@@ -1,6 +1,9 @@
 """ Functions for validating input from the user """
 
 
+import re
+
+
 class BadInputException(Exception):
     pass
 
@@ -9,9 +12,9 @@ class NotFound(Exception):
     pass
 
 
-DEPLOYMENT_NAME_RGX = r"^[^\\.]+$"
+DEPLOYMENT_NAME_RGX = re.compile("^[^\\.]+$")
 
-DEPLOYMENT_SUBDOMAIN_RGX = r"^[^\\.\\w]+$"
+DEPLOYMENT_SUBDOMAIN_RGX = re.compile("^[^\\.\\w]+$")
 
 
 def validate_deployment_name(deployment_name: str):
