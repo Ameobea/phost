@@ -1,10 +1,8 @@
 """ Various utility and helper functions """
 
 
-from functools import reduce, wraps
-from click.decorators import _param_memo
-
-import click
+from functools import reduce
+import uuid
 
 
 class Composition(object):
@@ -55,6 +53,10 @@ def compose(*wrappers):
 
 def slugify(s: str) -> str:
     return s.lower().replace(" ", "-").replace(".", "_")
+
+
+def create_random_subdomain() -> str:
+    return uuid.uuid4().hex[:16]
 
 
 def test_compose():

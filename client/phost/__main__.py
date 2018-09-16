@@ -12,7 +12,7 @@ import dateutil.parser
 
 from .config import load_conf
 from .upload import compress_dir
-from .util import compose, slugify
+from .util import compose, slugify, create_random_subdomain
 
 
 def make_request(method: str, *args, json=None, multipart_data=None):
@@ -202,9 +202,16 @@ def delete_deployment_main(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
 
 
-def create_deployment(name, subdomain, directory, version):
+def create_deployment(name, subdomain, directory, version, random_subdomain):
+    if random_subdomain:
+        if subdomain:
+            print("Can't supply both `--random-subdomain` and an explicit subdomain")
+            exit(1)
+
     if not subdomain:
         subdomain = slugify(name)
+
+        subdomain = create_random_subdomain()
 
     # Compress the target directory into a tempfile .tgz archive
     tgz_file = compress_dir(directory)
@@ -228,24 +235,31 @@ create_deployment_decorators = compose(
         "-s",
         default=None,
         help=(
-            "The subdomain on which the deployment will be hosted.  If left off, the subdomain will be"
-            " constructed from the deployment name."
+            "The subdomain on which the deployment will be hosted.  If left off, the subdomain"
+            " will be constructed from the deployment name."
         ),
     ),
     click.option("--version", "-v", default="0.1.0"),
+    click.option(
+        "--private",
+        "-p",
+        default=False,
+        help="Private deployments have a randomized subdomain",
+        is_flag=True,
+    ),
 )
 
 
 @main.command("create")
 @create_deployment_decorators
-def create_deployment_main(name, subdomain, directory, version):
-    create_deployment(name, subdomain, directory, version)
+def create_deployment_main(name, subdomain, directory, version, private):
+    create_deployment(name, subdomain, directory, version, private)
 
 
 @deployment.command("create")
 @create_deployment_decorators
-def create_deployment_deployment(name, subdomain, directory, version):
-    create_deployment(name, subdomain, directory, version)
+def create_deployment_deployment(name, subdomain, directory, version, private):
+    create_deployment(name, subdomain, directory, version, private)
 
 
 with_update_deployment_decorators = compose(
