@@ -22,7 +22,13 @@ from .upload import (
     delete_hosted_version,
 )
 from .serialize import serialize
-from .validation import BadInputException, validate_deployment_name, get_validated_form, NotFound
+from .validation import (
+    BadInputException,
+    validate_deployment_name,
+    get_validated_form,
+    NotFound,
+    validate_subdomain,
+)
 
 
 def with_caught_exceptions(func):
