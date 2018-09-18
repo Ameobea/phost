@@ -210,7 +210,7 @@ class DeploymentVersionView(TemplateView):
 
             # Extract the supplied archive into the hosting directory
             handle_uploaded_static_archive(
-                req.FILES["file"], deployment_data["subomain"], version, init=False
+                req.FILES["file"], deployment_data["subdomain"], version, init=False
             )
             # Update the `latest` version to point to this new version
             update_symlink(deployment_data["name"], version)

@@ -13,7 +13,7 @@ RUN chown -R www-data /var/www/hosted
 
 RUN pip install --upgrade pip
 
-ADD ./apache-vhost.conf /etc/apache2/sites-available/000-default.conf
+ADD ./apache-config-inner.conf /etc/apache2/sites-available/000-default.conf
 ADD . /var/www/phost
 
 RUN pip install -r /var/www/phost/requirements.txt
