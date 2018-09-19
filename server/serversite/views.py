@@ -16,7 +16,7 @@ from django.http.request import HttpRequest
 from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import TemplateView
 
-from .models import StaticDeployment, DeploymentVersion
+from .models import StaticDeployment, DeploymentVersion, DeploymentCategory
 from .forms import StaticDeploymentForm
 from .upload import (
     handle_uploaded_static_archive,
@@ -125,14 +125,17 @@ class Deployments(TemplateView):
     @with_caught_exceptions
     @with_login_required
     def get(self, request: HttpRequest):
-        all_deployments = StaticDeployment.objects.prefetch_related("deploymentversion_set").all()
+        all_deployments = StaticDeployment.objects.prefetch_related(
+            "deploymentversion_set", "categories"
+        ).all()
         deployments_data = serialize(all_deployments, json=False)
         deployments_data_with_versions = [
             {
                 **datum,
-                "versions": serialize(deployment_models.deploymentversion_set.all(), json=False),
+                "versions": serialize(deployment_model.deploymentversion_set.all(), json=False),
+                "categories": serialize(deployment_model.categories.all(), json=False),
             }
-            for (datum, deployment_models) in zip(deployments_data, all_deployments)
+            for (datum, deployment_model) in zip(deployments_data, all_deployments)
         ]
 
         return JsonResponse(deployments_data_with_versions, safe=False)
@@ -145,6 +148,7 @@ class Deployments(TemplateView):
         deployment_name = form.cleaned_data["name"]
         subdomain = form.cleaned_data["subdomain"]
         version = form.cleaned_data["version"]
+        categories = form.cleaned_data["categories"].split(",")
         validate_deployment_name(deployment_name)
         validate_subdomain(subdomain)
 
@@ -154,6 +158,13 @@ class Deployments(TemplateView):
                 # Create the new deployment descriptor
                 deployment_descriptor = StaticDeployment(name=deployment_name, subdomain=subdomain)
                 deployment_descriptor.save()
+
+                # Create categories
+                for category in categories:
+                    (category_model, _) = DeploymentCategory.objects.get_or_create(
+                        category=category
+                    )
+                    deployment_descriptor.categories.add(category_model)
 
                 # Create the new version and set it as active
                 version_model = DeploymentVersion(
@@ -232,7 +243,7 @@ class DeploymentVersionView(TemplateView):
 
     @with_caught_exceptions
     @with_login_required
-    def post(self, req: HttpRequest, *args, deployment_id=None, version=None):
+    def post(self, req: HttpRequest, deployment_id=None, version=None):
         query_dict = get_query_dict(deployment_id, req)
         deployment = get_or_none(StaticDeployment, **query_dict)
 

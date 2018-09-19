@@ -123,7 +123,7 @@ def list_deployments():
         return (active_version, versions_string)
 
     deployments = STATE.api_call("deployments/")
-    table_headers = ["Name", "URL", "Creation Date", "Active Version", "All Versions"]
+    table_headers = ["Name", "URL", "Creation Date", "Active Version", "All Versions", "Categories"]
     table_data = map(
         lambda datum: [
             datum["name"],
@@ -132,6 +132,7 @@ def list_deployments():
             ),
             dateutil.parser.parse(datum["created_on"]).strftime("%Y-%m-%d"),
             *process_versions(datum["versions"]),
+            ", ".join(datum["categories"]),
         ],
         deployments,
     )
@@ -234,7 +235,7 @@ def delete_deployment_main(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
 
 
-def create_deployment(name, subdomain, directory, version, random_subdomain):
+def create_deployment(name, subdomain, directory, version, random_subdomain, categories):
     if random_subdomain:
         if subdomain is None:
             subdomain = create_random_subdomain()
@@ -252,6 +253,7 @@ def create_deployment(name, subdomain, directory, version, random_subdomain):
         "subdomain": ("", subdomain),
         "file": ("directory.tgz", tgz_file),
         "version": ("", version),
+        "categories": ("", ",".join(categories)),
     }
 
     res = STATE.api_call("deployments/", method="POST", multipart_data=multipart_data)
@@ -278,19 +280,28 @@ create_deployment_decorators = compose(
         help="Private deployments have a randomized subdomain",
         is_flag=True,
     ),
+    click.option(
+        "--category",
+        "-c",
+        multiple=True,
+        help=(
+            "A string representing a category that this deployment should be added to."
+            "  (Multiple may be provided)"
+        ),
+    ),
 )
 
 
 @main.command("create")
 @create_deployment_decorators
-def create_deployment_main(name, subdomain, directory, version, private):
-    create_deployment(name, subdomain, directory, version, private)
+def create_deployment_main(name, subdomain, directory, version, private, category):
+    create_deployment(name, subdomain, directory, version, private, category)
 
 
 @deployment.command("create")
 @create_deployment_decorators
-def create_deployment_deployment(name, subdomain, directory, version, private):
-    create_deployment(name, subdomain, directory, version, private)
+def create_deployment_deployment(name, subdomain, directory, version, private, category):
+    create_deployment(name, subdomain, directory, version, private, category)
 
 
 with_update_deployment_decorators = compose(
@@ -307,6 +318,8 @@ def update_deployment(query, lookup_field, version, directory):
         multipart_data=multipart_data,
         method="POST",
     )
+
+    print("Deployment successfully updated")
 
 
 @deployment.command("update")
