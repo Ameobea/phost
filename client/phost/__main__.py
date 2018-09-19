@@ -3,6 +3,7 @@ import traceback
 import json
 from typing import List
 import os
+from time import sleep
 
 import click
 import requests
@@ -10,21 +11,9 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from terminaltables import SingleTable
 import dateutil.parser
 
-from .config import load_conf
+from .config import load_conf, load_cookies, save_cookies
 from .upload import compress_dir
 from .util import compose, slugify, create_random_subdomain
-
-
-def make_request(method: str, *args, json_body=None, multipart_data=None):
-    (func, kwargs) = {
-        "POST": (requests.post, {"json": json_body, "files": multipart_data}),
-        "GET": (requests.get, {}),
-        "PUT": (requests.put, {"json": json_body}),
-        "PATCH": (requests.patch, {"json": json_body}),
-        "DELETE": (requests.delete, {}),
-    }[method.upper()]
-
-    return func(*args, **kwargs)
 
 
 class PhostServerError(Exception):
@@ -37,15 +26,48 @@ class GlobalAppState(object):
     def __init__(self, config_file):
         self.conf = load_conf(config_file)
 
+        # Load cookies from previous session and construct a new session with them
+        self.session = requests.Session()
+        self.session.cookies.update(load_cookies())
+
+    def __del__(self):
+        """ Before we exit, save the cookies from this session so that they can be re-used next
+        time that the application is run. """
+
+        save_cookies(self.session.cookies.get_dict())
+
+    def make_request(self, method: str, *args, json_body=None, form_data=None, multipart_data=None):
+        (func, kwargs) = {
+            "POST": (
+                self.session.post,
+                {"json": json_body, "files": multipart_data, "data": form_data},
+            ),
+            "GET": (self.session.get, {}),
+            "PUT": (self.session.put, {"json": json_body}),
+            "PATCH": (self.session.patch, {"json": json_body}),
+            "DELETE": (self.session.delete, {}),
+        }[method.upper()]
+
+        return func(*args, **kwargs)
+
     def api_call(self, resource_path: str, method="GET", **kwargs):
         try:
-            res = make_request(
+            res = self.make_request(
                 method, "{}/{}".format(self.conf["api_server_url"], resource_path), **kwargs
             )
+
             if res.status_code == 404:
                 raise PhostServerError("Resource not found")
             elif res.status_code == 500:
                 raise PhostServerError("Internal server error")
+            elif res.status_code == 403:
+                # Try to login and repeat the request if this isn't the login route
+                if resource_path != "login/":
+                    self.login()
+                    sleep(0.2)
+                    return self.api_call(resource_path, method=method, **kwargs)
+
+                raise PhostServerError("Error logging in; invalid username/password?")
             elif res.status_code != 200:
                 raise PhostServerError(
                     "Received {} response code when making request: {}".format(
@@ -68,6 +90,17 @@ class GlobalAppState(object):
             else:
                 print("Error: {}".format(e))
 
+            exit(1)
+
+    def login(self):
+        res = self.api_call(
+            "login/",
+            method="POST",
+            form_data={"username": self.conf["username"], "password": self.conf["password"]},
+        )
+
+        if not res["success"]:
+            print("Error logging into the server; invalid username/password?")
             exit(1)
 
 
@@ -116,15 +149,12 @@ def list_deployments():
 
 
 def delete_deployment(query, lookup_field, version):
-    if version is None:
-        STATE.api_call(
-            "deployments/{}/?lookupField={}".format(query, lookup_field), method="DELETE"
-        )
-    else:
-        STATE.api_call(
-            "deployments/{}/{}/?lookupField={}".format(query, version, lookup_field),
-            method="DELETE",
-        )
+    req_path = (
+        "deployments/{}/?lookupField={}".format(query, lookup_field)
+        if version is None
+        else "deployments/{}/{}/?lookupField={}".format(query, version, lookup_field)
+    )
+    STATE.api_call(req_path, method="DELETE")
 
     print("Deployment {}successfully deleted".format("" if version is None else "version "))
 

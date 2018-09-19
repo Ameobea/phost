@@ -11,4 +11,5 @@ urlpatterns = [
         views.DeploymentVersionView.as_view(),
         name="deployment_version",
     ),
+    path("login/", views.login_user, name="login"),
 ]

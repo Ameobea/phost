@@ -6,11 +6,14 @@ from django.http import (
     HttpResponseBadRequest,
     HttpResponseServerError,
     HttpResponseNotFound,
+    HttpResponseForbidden,
 )
-from django.http.request import HttpRequest
+from django.contrib.auth import authenticate, login
 from django.db import transaction
 from django.db.utils import IntegrityError
-from django.views.decorators.http import require_GET
+from django.utils.datastructures import MultiValueDictKeyError
+from django.http.request import HttpRequest
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import TemplateView
 
 from .models import StaticDeployment, DeploymentVersion
@@ -27,6 +30,8 @@ from .validation import (
     validate_deployment_name,
     get_validated_form,
     NotFound,
+    NotAuthenticated,
+    InvalidCredentials,
     validate_subdomain,
 )
 
@@ -39,6 +44,10 @@ def with_caught_exceptions(func):
             return HttpResponseBadRequest(str(e))
         except NotFound:
             return HttpResponseNotFound()
+        except NotAuthenticated:
+            return HttpResponseForbidden("You must be logged into access this view")
+        except InvalidCredentials:
+            return HttpResponseForbidden("Invalid username or password provided")
         except Exception as e:
             print("Uncaught error: {}".format(str(e)))
             traceback.print_exc()
@@ -60,9 +69,42 @@ def with_default_success(func):
     return wrapper
 
 
+def with_login_required(func):
+    """ Decorator that verifies that a user is logged in and returns a Forbidden status code if
+    the requester is not. """
+
+    def wrapper(router: TemplateView, req: HttpRequest, *args, **kwargs):
+        if not req.user.is_authenticated:
+            raise NotAuthenticated()
+
+        return func(router, req, *args, **kwargs)
+
+    return wrapper
+
+
 @require_GET
 def index(_req: HttpRequest):
     return HttpResponse("Site is up and running!  Try `GET /deployments`.")
+
+
+@require_POST
+@with_caught_exceptions
+@with_default_success
+def login_user(req: HttpRequest):
+    username = None
+    password = None
+    try:
+        username = req.POST["username"]
+        password = req.POST["password"]
+    except MultiValueDictKeyError:
+        raise BadInputException("You must supply both a username and password")
+
+    user = authenticate(req, username=username, password=password)
+
+    if user is not None:
+        login(req, user)
+    else:
+        raise InvalidCredentials("Invalid username or password")
 
 
 def get_or_none(Model, do_raise=True, **kwargs):
@@ -81,6 +123,7 @@ def get_or_none(Model, do_raise=True, **kwargs):
 
 class Deployments(TemplateView):
     @with_caught_exceptions
+    @with_login_required
     def get(self, request: HttpRequest):
         all_deployments = StaticDeployment.objects.prefetch_related("deploymentversion_set").all()
         deployments_data = serialize(all_deployments, json=False)
@@ -95,6 +138,7 @@ class Deployments(TemplateView):
         return JsonResponse(deployments_data_with_versions, safe=False)
 
     @with_caught_exceptions
+    @with_login_required
     def post(self, request: HttpRequest):
         form = get_validated_form(StaticDeploymentForm, request)
 
@@ -163,6 +207,7 @@ class Deployment(TemplateView):
         return JsonResponse(deployment_data, safe=False)
 
     @with_caught_exceptions
+    @with_login_required
     @with_default_success
     def delete(self, req: HttpRequest, deployment_id=None):
         with transaction.atomic():
@@ -186,6 +231,7 @@ class DeploymentVersionView(TemplateView):
         return serialize(version_model)
 
     @with_caught_exceptions
+    @with_login_required
     def post(self, req: HttpRequest, *args, deployment_id=None, version=None):
         query_dict = get_query_dict(deployment_id, req)
         deployment = get_or_none(StaticDeployment, **query_dict)
@@ -218,6 +264,7 @@ class DeploymentVersionView(TemplateView):
         return serialize(version_model)
 
     @with_caught_exceptions
+    @with_login_required
     @with_default_success
     def delete(self, req: HttpRequest, deployment_id=None, version=None):
         with transaction.atomic():

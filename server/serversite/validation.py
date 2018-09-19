@@ -12,6 +12,14 @@ class NotFound(Exception):
     pass
 
 
+class NotAuthenticated(Exception):
+    pass
+
+
+class InvalidCredentials(Exception):
+    pass
+
+
 # We could technically allow special characters, but that makes slugification much harder and
 # just isn't worth it.
 DEPLOYMENT_NAME_RGX = re.compile("^[a-zA-Z0-9-_ ]+$")

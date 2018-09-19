@@ -6,21 +6,38 @@ DEFAULT_CONF = {
     "api_server_url": "http://localhost:8000",
     "hosting_base_url": "ameo.design",
     "hosting_protocol": "https",
+    "username": "user",
+    "password": "pass",
 }
+
+CONFIG_DIR_PATH = os.path.join(os.path.expanduser("~"), ".phost")
+CONF_FILE_PATH = os.path.join(CONFIG_DIR_PATH, "conf.toml")
+COOKIE_FILE_PATH = os.path.join(CONFIG_DIR_PATH, "cookies.toml")
+
+
+def load_cookies() -> dict:
+    if not os.path.isfile(COOKIE_FILE_PATH):
+        return {}
+
+    with open(COOKIE_FILE_PATH) as f:
+        return toml.loads(f.read())
+
+
+def save_cookies(cookies: dict):
+    with open(COOKIE_FILE_PATH, "w") as f:
+        f.write(toml.dumps(cookies))
 
 
 def init_config():
-    config_dir_path = os.path.join(os.path.expanduser("~"), ".phost")
-    pathlib.Path(config_dir_path).mkdir(parents=False, exist_ok=True)
+    pathlib.Path(CONFIG_DIR_PATH).mkdir(parents=False, exist_ok=True)
 
     # Initialize config file with default config if it's empty
-    conf_file_path = os.path.join(config_dir_path, "conf.toml")
-    if not os.path.isfile(conf_file_path):
+    if not os.path.isfile(CONF_FILE_PATH):
         default_conf_toml = toml.dumps(DEFAULT_CONF)
-        with open(conf_file_path, "w") as f:
+        with open(CONF_FILE_PATH, "w") as f:
             f.write(default_conf_toml)
 
-    return open(conf_file_path, "r")
+    return open(CONF_FILE_PATH, "r")
 
 
 def load_conf(conf_file) -> dict:
