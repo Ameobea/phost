@@ -281,6 +281,7 @@ class DeploymentVersionView(TemplateView):
         with transaction.atomic():
             query_dict = get_query_dict(deployment_id, req)
             deployment = get_or_none(StaticDeployment, **query_dict)
+            deployment_data = serialize(deployment, json=False)
             # Delete the entry for the deployment version from the database
             DeploymentVersion.objects.filter(deployment=deployment, version=version).delete()
             # If no deployment versions remain for the owning deployment, delete the deployment
@@ -290,7 +291,6 @@ class DeploymentVersionView(TemplateView):
                 deployment.delete()
 
             if delete_deployment:
-                delete_hosted_deployment(deployment)
+                delete_hosted_deployment(deployment_data["name"])
             else:
-                deployment_data = serialize(deployment, json=False)
                 delete_hosted_version(deployment_data["name"], version)

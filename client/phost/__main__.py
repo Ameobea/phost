@@ -30,12 +30,6 @@ class GlobalAppState(object):
         self.session = requests.Session()
         self.session.cookies.update(load_cookies())
 
-    def __del__(self):
-        """ Before we exit, save the cookies from this session so that they can be re-used next
-        time that the application is run. """
-
-        save_cookies(self.session.cookies.get_dict())
-
     def make_request(self, method: str, *args, json_body=None, form_data=None, multipart_data=None):
         (func, kwargs) = {
             "POST": (
@@ -90,6 +84,7 @@ class GlobalAppState(object):
             else:
                 print("Error: {}".format(e))
 
+            self.save_cookies()
             exit(1)
 
     def login(self):
@@ -102,6 +97,10 @@ class GlobalAppState(object):
         if not res["success"]:
             print("Error logging into the server; invalid username/password?")
             exit(1)
+
+        # Save the cookies from this session so that they can be re-used next time that the
+        # application is run.
+        save_cookies(self.session.cookies.get_dict())
 
 
 STATE = None
@@ -132,7 +131,9 @@ def list_deployments():
             ),
             dateutil.parser.parse(datum["created_on"]).strftime("%Y-%m-%d"),
             *process_versions(datum["versions"]),
-            ", ".join(datum["categories"]),
+            ", ".join(
+                filter(None, map(lambda category: category["category"], datum["categories"]))
+            ),
         ],
         deployments,
     )
@@ -344,5 +345,4 @@ def show_deployment(query, lookup_field):
 logging.getLogger("requests").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-main()  # pylint: disable=E1120
-
+main()  # pylint: disable=E1120[]
