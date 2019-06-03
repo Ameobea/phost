@@ -1,8 +1,7 @@
 # Adapted from https://github.com/ramkulkarni1/django-apache2-docker/blob/master/Dockerfile
 FROM ubuntu:18.04
 
-RUN apt-get update
-RUN apt-get install -y apt-utils vim curl apache2 apache2-utils
+RUN apt-get update && apt-get install -y vim curl apache2 apache2-utils
 RUN apt-get -y install python3 libapache2-mod-wsgi-py3 python3-dev libmysqlclient-dev
 RUN a2enmod rewrite
 RUN ln /usr/bin/python3 /usr/bin/python

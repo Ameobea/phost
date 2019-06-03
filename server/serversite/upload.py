@@ -3,11 +3,11 @@ Utilities for dealing with uploaded deployment archives
 """
 
 import tempfile
-import subprocess
 from subprocess import CalledProcessError
 import os
 import pathlib
 import shutil
+import tarfile
 
 from django.conf import settings
 
@@ -51,11 +51,6 @@ def handle_uploaded_static_archive(file, subdomain: str, version: str, init=True
     """
 
     try:
-        tf = tempfile.NamedTemporaryFile(suffix=".tgz")
-        for chunk in file.chunks():
-            print(len(chunk))
-            tf.write(chunk)
-
         dst_dir = os.path.join(HOST_DIR, subdomain, version)
         pathlib.Path(dst_dir).mkdir(parents=True, exist_ok=True)
         if init:
@@ -63,13 +58,16 @@ def handle_uploaded_static_archive(file, subdomain: str, version: str, init=True
                 os.symlink(dst_dir, os.path.join(HOST_DIR, subdomain, "latest"))
 
         # Extract the archive into the hosting directory
-        temp_filename = tf.name
-        subprocess.run(["tar", "-xzf", temp_filename, "-C", dst_dir]).check_returncode()
-        tf.close()
+        t = tarfile.open(mode="r:*", fileobj=file)
+        t.extractall(dst_dir)
+        t.close()
 
         return dst_dir
-    except CalledProcessError:
-        raise BadInputException("Error while decompressing the provided archive .tgz file")
     except Exception as e:
-        shutil.rmtree(dst_dir)
+        print("Error while creating deployment from tar archive")
+        print(e)
+
+        directory_to_delete = os.path.join(HOST_DIR, subdomain) if init else dst_dir
+        print(f"Deleting {directory_to_delete}...")
+        shutil.rmtree(directory_to_delete)
         raise e

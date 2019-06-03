@@ -1,0 +1,8 @@
+build-docker:
+  docker build -t phost .
+
+run-docker:
+  docker run -it -p 8000:80 phost
+
+run:
+  python manage.py runserver

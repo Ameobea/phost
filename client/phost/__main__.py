@@ -84,7 +84,7 @@ class GlobalAppState(object):
             else:
                 print("Error: {}".format(e))
 
-            self.save_cookies()
+            save_cookies(self.session.cookies.get_dict())
             exit(1)
 
     def login(self):
@@ -345,4 +345,4 @@ def show_deployment(query, lookup_field):
 logging.getLogger("requests").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-main()  # pylint: disable=E1120[]
+main()  # pylint: disable=E1120
