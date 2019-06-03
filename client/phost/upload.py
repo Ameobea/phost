@@ -11,6 +11,6 @@ def compress_dir(dir_path: str):
     temp_filename = temp_file.name
 
     with tarfile.open(temp_filename, mode="w:bz2") as out:
-        out.add(target_dir_path)
+        out.add(target_dir_path, arcname=".")
 
     return temp_file
