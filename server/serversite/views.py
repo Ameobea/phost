@@ -1,3 +1,6 @@
+import mimetypes
+import os
+import re
 import traceback
 
 from django.http import (
@@ -8,9 +11,11 @@ from django.http import (
     HttpResponseNotFound,
     HttpResponseForbidden,
 )
+from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.db import transaction
 from django.db.utils import IntegrityError
+from django.shortcuts import render
 from django.utils.datastructures import MultiValueDictKeyError
 from django.http.request import HttpRequest
 from django.views.decorators.http import require_GET, require_POST
@@ -34,6 +39,22 @@ from .validation import (
     InvalidCredentials,
     validate_subdomain,
 )
+
+# Used to get the name of the deployment into which a given URL points
+REDIRECT_URL_RGX = re.compile("^/__HOSTED/([^/]+)/.*$")
+
+# Taken from https://djangosnippets.org/snippets/101/
+def send_data(path, filename=None, mimetype=None):
+
+    if filename is None:
+        filename = os.path.basename(path)
+
+    if mimetype is None:
+        mimetype, encoding = mimetypes.guess_type(filename)
+
+    response = HttpResponse(content_type=mimetype)
+    response.write(open(path, "rb").read())
+    return response
 
 
 def with_caught_exceptions(func):
@@ -294,3 +315,61 @@ class DeploymentVersionView(TemplateView):
                 delete_hosted_deployment(deployment_data["name"])
             else:
                 delete_hosted_version(deployment_data["name"], version)
+
+
+@with_caught_exceptions
+def not_found(req):
+    # This environment variable is passed in from Apache
+    redirect_url = req.META.get("REDIRECT_URL")
+
+    if redirect_url is None:
+        return HttpResponseNotFound()
+
+    # Get the name of the deployment that this 404 applies to, if any
+    # TODO: Handle versions
+    match = REDIRECT_URL_RGX.match(redirect_url)
+    if match is None:
+        return HttpResponseNotFound()
+
+    deployment_subdomain = match[1]
+
+    # Check to see if there's a custom 404 handle for the given deployment
+    deployment = get_or_none(StaticDeployment, subdomain=deployment_subdomain)
+    not_found_document = deployment.not_found_document
+
+    if not_found_document is None:
+        return HttpResponseNotFound()
+
+    if deployment is None:
+        return HttpResponseNotFound()
+
+    # Sandbox the retrieved pathname to be within the deployment's directory, preventing all kinds
+    # of potentially nasty directory traversal stuff.
+    deployment_dir_path = os.path.abspath(os.path.join(settings.HOST_PATH, deployment.name))
+    # TODO: Handle versions
+    document_path = os.path.abspath(
+        os.path.relpath(
+            os.path.join(deployment_dir_path, "latest", not_found_document),
+            start=not_found_document,
+        )
+    )
+    common_prefix = os.path.commonprefix([deployment_dir_path, document_path])
+
+    if common_prefix != deployment_dir_path:
+        return HttpResponseBadRequest(
+            f"Invalid error document provided: {not_found_document}; must be relative to deployment."
+        )
+
+    if not os.path.exists(document_path):
+        return HttpResponseBadRequest(
+            f"The specified 404 document {not_found_document} doesn't exist in this deployment."
+        )
+
+    # Since our way of serving this file loads it into memory, we block any files that are >128MB
+    file_size = os.path.getsize(document_path)
+    if file_size > 1024 * 1024 * 1024 * 128:
+        return HttpResponseBadRequest(
+            f"Custom not found document is {file_size} bytes, which is more than the 128MB limit."
+        )
+
+    return send_data(document_path)

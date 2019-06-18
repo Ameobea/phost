@@ -11,6 +11,14 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'server.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.settings")
 
-application = get_wsgi_application()
+inner_application = get_wsgi_application()
+
+
+def application(environ, start_response):
+    # Pass all environment variables from Apache into the WSGI application/Django
+    for (k, v) in os.environ.items():
+        environ[k] = v
+
+    return inner_application(environ, start_response)

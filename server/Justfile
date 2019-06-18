@@ -2,7 +2,8 @@ build-docker:
   docker build -t phost .
 
 run-docker:
-  export $(egrep -v '^#' .env | xargs)
+  docker kill phost || true
+  docker rm phost || true
   docker run -d --name phost -p 7645:80 -v /opt/phost:/var/www/hosted -e DB_USERNAME=$DB_USERNAME -e DB_PASSWORD=$DB_PASSWORD -e DB_HOST=$DB_HOST -e DB_DATABASE=$DB_DATABASE -e PROTOCOL=$PROTOCOL -e ROOT_URL=$ROOT_URL -e HOST_PATH=$HOST_PATH phost
 
 run:

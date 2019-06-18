@@ -12,4 +12,5 @@ urlpatterns = [
         name="deployment_version",
     ),
     path("login/", views.login_user, name="login"),
+    path("404/", views.not_found),
 ]

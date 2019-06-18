@@ -14,6 +14,7 @@ class StaticDeployment(models.Model):
     subdomain = models.SlugField(unique=True, max_length=255)
     created_on = models.DateTimeField(auto_now_add=True)
     categories = models.ManyToManyField(DeploymentCategory)
+    not_found_document = models.TextField(null=True, blank=True)
 
     def get_url(self) -> str:
         return "{}://{}.{}/".format(settings.PROTOCOL, self.subdomain, settings.ROOT_URL)
