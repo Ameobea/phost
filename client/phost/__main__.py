@@ -236,7 +236,10 @@ def delete_deployment_main(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
 
 
-def create_deployment(name, subdomain, directory, version, random_subdomain, categories):
+def create_deployment(name, subdomain, directory, version, random_subdomain, categories, spa, not_found_document):
+    if spa and not_found_document is None:
+        not_found_document = "./index.html"
+
     if random_subdomain:
         if subdomain is None:
             subdomain = create_random_subdomain()
@@ -255,6 +258,7 @@ def create_deployment(name, subdomain, directory, version, random_subdomain, cat
         "file": ("directory.tgz", tgz_file),
         "version": ("", version),
         "categories": ("", ",".join(categories)),
+        "not_found_document": ("", not_found_document),
     }
 
     res = STATE.api_call("deployments/", method="POST", multipart_data=multipart_data)
@@ -282,6 +286,23 @@ create_deployment_decorators = compose(
         is_flag=True,
     ),
     click.option(
+        "--spa",
+        default=False,
+        help=(
+            "Create this deployment as a single-page web application where `index.html` is served"
+            " for all missing routes"
+        ),
+        is_flag=True
+    ),
+    click.option(
+        "--not-found-document",
+        default=None,
+        help=(
+            "A path to a file that will be served in case of a 404.  If not provided, the default "
+            "Apache2 \"Not Found\" page will be displayed."
+        ),
+    ),
+    click.option(
         "--category",
         "-c",
         multiple=True,
@@ -295,14 +316,14 @@ create_deployment_decorators = compose(
 
 @main.command("create")
 @create_deployment_decorators
-def create_deployment_main(name, subdomain, directory, version, private, category):
-    create_deployment(name, subdomain, directory, version, private, category)
+def create_deployment_main(name, subdomain, directory, version, private, category, spa, not_found_document):
+    create_deployment(name, subdomain, directory, version, private, category, spa, not_found_document)
 
 
 @deployment.command("create")
 @create_deployment_decorators
-def create_deployment_deployment(name, subdomain, directory, version, private, category):
-    create_deployment(name, subdomain, directory, version, private, category)
+def create_deployment_deployment(name, subdomain, directory, version, private, category, spa, not_found_document):
+    create_deployment(name, subdomain, directory, version, private, category, spa, not_found_document)
 
 
 with_update_deployment_decorators = compose(

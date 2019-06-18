@@ -7,3 +7,4 @@ class StaticDeploymentForm(forms.Form):
     version = forms.CharField(max_length=32)
     file = forms.FileField(allow_empty_file=False)
     categories = forms.CharField(required=False)  # Comma-separated list of categories
+    not_found_document = forms.CharField(required=False)

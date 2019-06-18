@@ -170,6 +170,7 @@ class Deployments(TemplateView):
         subdomain = form.cleaned_data["subdomain"]
         version = form.cleaned_data["version"]
         categories = form.cleaned_data["categories"].split(",")
+        not_found_document = form.cleaned_data["not_found_document"]
         validate_deployment_name(deployment_name)
         validate_subdomain(subdomain)
 
@@ -177,7 +178,7 @@ class Deployments(TemplateView):
         try:
             with transaction.atomic():
                 # Create the new deployment descriptor
-                deployment_descriptor = StaticDeployment(name=deployment_name, subdomain=subdomain)
+                deployment_descriptor = StaticDeployment(name=deployment_name, subdomain=subdomain, not_found_document=not_found_document)
                 deployment_descriptor.save()
 
                 # Create categories
@@ -357,7 +358,10 @@ def not_found(req):
 
     if common_prefix != deployment_dir_path:
         return HttpResponseBadRequest(
-            f"Invalid error document provided: {not_found_document}; must be relative to deployment."
+            (
+                f"Invalid error document provided: {not_found_document}; "
+                "must be relative to deployment."
+            )
         )
 
     if not os.path.exists(document_path):
