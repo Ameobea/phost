@@ -15,7 +15,6 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.db import transaction
 from django.db.utils import IntegrityError
-from django.shortcuts import render
 from django.utils.datastructures import MultiValueDictKeyError
 from django.http.request import HttpRequest
 from django.views.decorators.http import require_GET, require_POST
@@ -250,7 +249,7 @@ class Deployment(TemplateView):
             # This will also recursively delete all attached versions
             deployment.delete()
 
-            delete_hosted_deployment(deployment_data["name"])
+            delete_hosted_deployment(deployment_data["subdomain"])
 
 
 class DeploymentVersionView(TemplateView):
@@ -292,7 +291,7 @@ class DeploymentVersionView(TemplateView):
                 req.FILES["file"], deployment_data["subdomain"], version, init=False
             )
             # Update the `latest` version to point to this new version
-            update_symlink(deployment_data["name"], version)
+            update_symlink(deployment_data["subdomain"], version)
 
         return serialize(version_model)
 
@@ -313,9 +312,9 @@ class DeploymentVersionView(TemplateView):
                 deployment.delete()
 
             if delete_deployment:
-                delete_hosted_deployment(deployment_data["name"])
+                delete_hosted_deployment(deployment_data["subdomain"])
             else:
-                delete_hosted_version(deployment_data["name"], version)
+                delete_hosted_version(deployment_data["subdomain"], version)
 
 
 @with_caught_exceptions
@@ -346,7 +345,7 @@ def not_found(req):
 
     # Sandbox the retrieved pathname to be within the deployment's directory, preventing all kinds
     # of potentially nasty directory traversal stuff.
-    deployment_dir_path = os.path.abspath(os.path.join(settings.HOST_PATH, deployment.name))
+    deployment_dir_path = os.path.abspath(os.path.join(settings.HOST_PATH, deployment.subdomain))
     # TODO: Handle versions
     document_path = os.path.abspath(
         os.path.relpath(

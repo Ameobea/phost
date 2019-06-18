@@ -21,27 +21,27 @@ def delete_dir_if_exists(dir_path: str):
         shutil.rmtree(dir_path)
 
 
-def delete_hosted_version(deployment_name: str, version: str):
-    version_dir = os.path.join(HOST_DIR, deployment_name, version)
+def delete_hosted_version(deployment_subdomain: str, version: str):
+    version_dir = os.path.join(HOST_DIR, deployment_subdomain, version)
     delete_dir_if_exists(version_dir)
 
 
-def delete_hosted_deployment(deployment_name: str):
-    deployment_dir = os.path.join(HOST_DIR, deployment_name)
+def delete_hosted_deployment(deployment_subdomain: str):
+    deployment_dir = os.path.join(HOST_DIR, deployment_subdomain)
     delete_dir_if_exists(deployment_dir)
 
 
-def update_symlink(deployment_name: str, new_version: str):
+def update_symlink(deployment_subdomain: str, new_version: str):
     """ Updates the directory that `latest` is symlinked to in the given host directory.  This
     should be called after a new version is pushed. """
 
-    link_path = os.path.join(HOST_DIR, deployment_name, "latest")
+    link_path = os.path.join(HOST_DIR, deployment_subdomain, "latest")
     try:
         os.unlink(link_path)
     except FileNotFoundError:
         pass
 
-    os.symlink(os.path.join(HOST_DIR, deployment_name, new_version), link_path)
+    os.symlink(os.path.join(HOST_DIR, deployment_subdomain, new_version), link_path)
 
 
 def handle_uploaded_static_archive(file, subdomain: str, version: str, init=True) -> str:
