@@ -326,7 +326,6 @@ def not_found(req):
         return HttpResponseNotFound()
 
     # Get the name of the deployment that this 404 applies to, if any
-    # TODO: Handle versions
     match = REDIRECT_URL_RGX.match(redirect_url)
     if match is None:
         return HttpResponseNotFound()
@@ -346,7 +345,6 @@ def not_found(req):
     # Sandbox the retrieved pathname to be within the deployment's directory, preventing all kinds
     # of potentially nasty directory traversal stuff.
     deployment_dir_path = os.path.abspath(os.path.join(settings.HOST_PATH, deployment.subdomain))
-    # TODO: Handle versions
     document_path = os.path.abspath(
         os.path.relpath(
             os.path.join(deployment_dir_path, "latest", not_found_document),

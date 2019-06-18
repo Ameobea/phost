@@ -45,3 +45,14 @@ class DeploymentVersion(models.Model):
 
         def __unicode__(self):
             return self.version  # pylint: disable=E1101
+
+class ProxyDeployment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True)
+    subdomain = models.SlugField(unique=True, max_length=255)
+    use_cors_headers = models.BooleanField(default=True)
+    destination_address = models.TextField()
+    created_on = models.DateTimeField(auto_now_add=True)
+
+    def get_url(self) -> str:
+        return "{}://{}.{}/".format(settings.PROTOCOL, self.subdomain, settings.ROOT_URL)
