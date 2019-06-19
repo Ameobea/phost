@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hyper-reverse-proxy = "0.4.0"
+hyper-reverse-proxy = { git = "https://github.com/Ameobea/hyper-reverse-proxy.git", branch = "https-support", features = ["https"] }
 hyper = "0.12"
 futures = "0.1"
 
