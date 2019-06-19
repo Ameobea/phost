@@ -106,6 +106,19 @@ class GlobalAppState(object):
 STATE = None
 
 
+def print_table(rows):
+    table = SingleTable(rows)
+    table.inner_column_border = False
+    table.inner_footing_row_border = False
+    table.inner_heading_row_border = False
+    table.inner_row_border = False
+    table.outer_border = False
+    table.padding_left = 0
+    table.padding_right = 3
+
+    print(table.table)
+
+
 def list_deployments():
     def process_versions(versions: List[dict]) -> (str, str):
         active_version = "None"
@@ -150,6 +163,25 @@ def list_deployments():
     print(table.table)
 
 
+def list_proxies():
+    proxies = STATE.api_call("proxy/")
+    table_headers = ["Name", "URL", "Creation Date"]
+
+    table_data = map(
+        lambda datum: [
+            datum["name"],
+            "{}://{}.{}/".format(
+                STATE.conf["hosting_protocol"], datum["subdomain"], STATE.conf["hosting_base_url"]
+            ),
+            dateutil.parser.parse(datum["created_on"]).strftime("%Y-%m-%d"),
+        ],
+        proxies,
+    )
+
+    rows = [table_headers, *table_data]
+    print_table(rows)
+
+
 def delete_deployment(query, lookup_field, version):
     req_path = (
         "deployments/{}/?lookupField={}".format(query, lookup_field)
@@ -159,6 +191,13 @@ def delete_deployment(query, lookup_field, version):
     STATE.api_call(req_path, method="DELETE")
 
     print("Deployment {}successfully deleted".format("" if version is None else "version "))
+
+
+def delete_proxy(query, lookup_field):
+    req_path = "proxy/{}/?lookupField={}".format(query, lookup_field)
+    STATE.api_call(req_path, method="DELETE")
+
+    print("Proxy successfully deleted")
 
 
 @click.group()
@@ -178,17 +217,18 @@ def deployment():
     pass
 
 
+@main.group("proxy")
+def proxy():
+    pass
+
+
 with_query_lookup_decorators = compose(
     click.argument("query"),
     click.option(
         "--name", "lookup_field", flag_value="name", default=True, help="Look up deployment by name"
     ),
     click.option(
-        "--id",
-        "lookup_field",
-        flag_value="id",
-        default=False,
-        help="Look up deployment by deployment UUID",
+        "--id", "lookup_field", flag_value="id", default=False, help="Look up deployment by ID"
     ),
     click.option(
         "--subdomain",
@@ -236,7 +276,9 @@ def delete_deployment_main(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
 
 
-def create_deployment(name, subdomain, directory, version, random_subdomain, categories, spa, not_found_document):
+def create_deployment(
+    name, subdomain, directory, version, random_subdomain, categories, spa, not_found_document
+):
     if spa and not_found_document is None:
         not_found_document = "./index.html"
 
@@ -263,6 +305,27 @@ def create_deployment(name, subdomain, directory, version, random_subdomain, cat
 
     res = STATE.api_call("deployments/", method="POST", multipart_data=multipart_data)
     print("Deployment successfully created: {}".format(res["url"]))
+
+
+def create_proxy(name, target_url, subdomain, random_subdomain, enable_cors):
+    if random_subdomain:
+        if subdomain is None:
+            subdomain = create_random_subdomain()
+        else:
+            print("Can't supply both `--random-subdomain` and an explicit subdomain")
+            exit(1)
+    elif not subdomain:
+        subdomain = slugify(name)
+
+    multipart_data = {
+        "name": ("", name),
+        "subdomain": ("", subdomain),
+        "use_cors_headers": ("", enable_cors),
+        "destination_address": ("", target_url),
+    }
+
+    res = STATE.api_call("proxy/", method="POST", multipart_data=multipart_data)
+    print("Proxy successfully created: {}".format(res["url"]))
 
 
 create_deployment_decorators = compose(
@@ -292,14 +355,14 @@ create_deployment_decorators = compose(
             "Create this deployment as a single-page web application where `index.html` is served"
             " for all missing routes"
         ),
-        is_flag=True
+        is_flag=True,
     ),
     click.option(
         "--not-found-document",
         default=None,
         help=(
             "A path to a file that will be served in case of a 404.  If not provided, the default "
-            "Apache2 \"Not Found\" page will be displayed."
+            'Apache2 "Not Found" page will be displayed.'
         ),
     ),
     click.option(
@@ -316,14 +379,22 @@ create_deployment_decorators = compose(
 
 @main.command("create")
 @create_deployment_decorators
-def create_deployment_main(name, subdomain, directory, version, private, category, spa, not_found_document):
-    create_deployment(name, subdomain, directory, version, private, category, spa, not_found_document)
+def create_deployment_main(
+    name, subdomain, directory, version, private, category, spa, not_found_document
+):
+    create_deployment(
+        name, subdomain, directory, version, private, category, spa, not_found_document
+    )
 
 
 @deployment.command("create")
 @create_deployment_decorators
-def create_deployment_deployment(name, subdomain, directory, version, private, category, spa, not_found_document):
-    create_deployment(name, subdomain, directory, version, private, category, spa, not_found_document)
+def create_deployment_deployment(
+    name, subdomain, directory, version, private, category, spa, not_found_document
+):
+    create_deployment(
+        name, subdomain, directory, version, private, category, spa, not_found_document
+    )
 
 
 with_update_deployment_decorators = compose(
@@ -361,6 +432,35 @@ def update_deployment_main(query, lookup_field, version, directory):
 def show_deployment(query, lookup_field):
     deployment_data = STATE.api_call("deployments/{}/?lookupField={}".format(query, lookup_field))
     print(json.dumps(deployment_data, indent=4))
+
+
+@proxy.command("ls")
+def list_proxies_cmd():
+    list_proxies()
+
+
+@with_query_lookup_decorators
+@proxy.command("rm")
+def delete_proxy_cmd(query, lookup_field):
+    delete_proxy(query, lookup_field)
+
+
+@click.argument("target_url")
+@click.argument("name")
+@click.option(
+    "--subdomain",
+    "-s",
+    default=None,
+    help=(
+        "The subdomain on which the proxy will be mounted.  If left off, the subdomain"
+        " will be constructed from the proxy name."
+    ),
+)
+@click.option("--private", "-p", default=False, help="Use a randomized subdomain", is_flag=True)
+@click.option("--cors", "-c", default=False, is_flag=True, help="Enable CORS headers on the proxy")
+@proxy.command("create")
+def create_proxy_cmd(name, target_url, subdomain, private, cors):
+    create_proxy(name, target_url, subdomain, private, cors)
 
 
 logging.getLogger("requests").setLevel(logging.CRITICAL)

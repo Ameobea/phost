@@ -46,6 +46,7 @@ class DeploymentVersion(models.Model):
         def __unicode__(self):
             return self.version  # pylint: disable=E1101
 
+
 class ProxyDeployment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)

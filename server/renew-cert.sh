@@ -8,6 +8,7 @@ docker run -it --rm --name certbot-phost \
     --dns-digitalocean-credentials /root/digitalocean_creds.ini \
     --cert-name ameo.design \
     -d *.ameo.design \
+    -d *.p.ameo.design \
     -d ameo.design
 
 service apache2 restart

@@ -11,7 +11,10 @@ impl Conf {
 
         Conf {
             database_url: env::var("DATABASE_URL").expect("The `DATABASE_URL` environment variable must be supplied"),
-            port: env::var("PORT").unwrap_or_else(|_| -> String { "5855".into() }).parse().expect("Unable to convert `PORT` to `u16`")
+            port: env::var("PORT")
+                .unwrap_or_else(|_| -> String { "5855".into() })
+                .parse()
+                .expect("Unable to convert `PORT` to `u16`"),
         }
     }
 }

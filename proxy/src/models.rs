@@ -1,6 +1,4 @@
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
-use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
 pub struct ProxyDeployment {
