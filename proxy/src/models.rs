@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
 pub struct ProxyDeployment {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub subdomain: String,
     pub use_cors_headers: bool,

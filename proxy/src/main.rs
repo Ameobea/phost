@@ -17,6 +17,7 @@ extern crate hyper_reverse_proxy;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate fern;
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
@@ -25,17 +26,22 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate signal_hook;
 
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use diesel::prelude::*;
+use diesel::r2d2::{Builder, ConnectionManager, Pool};
+use diesel::MysqlConnection;
 use futures::future::{self, Future};
 use hyper::http::uri::{PathAndQuery, Uri};
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
 use regex::Regex;
+use signal_hook::{iterator::Signals, SIGUSR1};
 
 pub mod conf;
 pub mod models;
@@ -46,15 +52,68 @@ lazy_static! {
     static ref REQUEST_URL_RGX: Regex = Regex::new("/([^/]+)/(.*)").unwrap();
 }
 
-fn build_conn_pool() -> diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::MysqlConnection>>
-{
-    let manager = diesel::r2d2::ConnectionManager::new(&CONF.database_url);
-    diesel::r2d2::Builder::new()
+fn build_conn_pool() -> Pool<ConnectionManager<MysqlConnection>> {
+    let manager = ConnectionManager::new(&CONF.database_url);
+    Builder::new()
         .build(manager)
         .expect("Failed to build R2D2/Diesel MySQL Connection Pool")
 }
 
 type BoxFut = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
+
+/// Loads the full set of deployments from the database and updates the mapping with them.
+fn populate_proxy_deployments(
+    proxy_deployments: &Mutex<HashMap<String, String>>,
+    pool: &Mutex<Pool<ConnectionManager<MysqlConnection>>>,
+) {
+    use crate::schema::serversite_proxydeployment::dsl::*;
+
+    let active_deployments = {
+        let pool_inner = &mut *pool.lock().unwrap();
+        let conn = pool_inner
+            .get()
+            .expect("Failed to get connection from connection pool");
+
+        match serversite_proxydeployment
+            .limit(1_000_000_000)
+            .load::<crate::models::ProxyDeployment>(&conn)
+        {
+            Ok(res) => res,
+            Err(err) => {
+                error!(
+                    "Error loading proxy deployments from the database: {:?}",
+                    err
+                );
+                return;
+            }
+        }
+    };
+    info!("Retrieved {} deployments; updating active deployments map...", active_deployments.len());
+
+    let deployments_inner = &mut *proxy_deployments.lock().unwrap();
+    deployments_inner.clear();
+
+    for deployment in active_deployments {
+        deployments_inner.insert(deployment.subdomain, deployment.destination_address);
+    }
+    info!("Active deployments map updated");
+}
+
+fn init_signal_handlers(proxy_deployments: Arc<Mutex<HashMap<String, String>>>) {
+    let pool = Arc::new(Mutex::new(build_conn_pool()));
+
+    // Populate the proxy deployments with the initial set of
+    populate_proxy_deployments(&*proxy_deployments, &*pool);
+
+    let signals = Signals::new(&[signal_hook::SIGUSR1]).expect("Failed to create `signals` handle");
+    std::thread::spawn(move || {
+        for _signal in signals.forever() {
+            info!("Received signal; updating deployments from database...");
+            populate_proxy_deployments(&*proxy_deployments, &*pool);
+            info!("Finished updating deployments.")
+        }
+    });
+}
 
 fn early_return(status_code: u16, msg: String) -> BoxFut {
     let mut res = Response::new(Body::from(msg));
@@ -62,20 +121,23 @@ fn early_return(status_code: u16, msg: String) -> BoxFut {
     return box future::ok(res);
 }
 
+fn setup_logger() {
+    fern::Dispatch::new()
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .apply()
+        .expect("Failed to apply Ferm dispatch");
+}
+
 fn main() {
     dotenv::dotenv().expect("dotenv file parsing failed");
 
-    let pool = Arc::new(Mutex::new(build_conn_pool()));
-    // TODO: Populate these from the database
+    setup_logger();
+
     let proxy_deployments: Arc<Mutex<HashMap<String, String>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
-    {
-        proxy_deployments
-            .lock()
-            .unwrap()
-            .insert("test".into(), "https://ameo.link".into())
-    };
+    init_signal_handlers(Arc::clone(&proxy_deployments));
 
     let addr = ([0, 0, 0, 0], CONF.port).into();
 
@@ -83,8 +145,6 @@ fn main() {
     let make_svc = make_service_fn(move |socket: &AddrStream| {
         let remote_addr = socket.remote_addr();
         let proxy_deployments = Arc::clone(&proxy_deployments);
-
-        // TODO: Expose endpoints for getting/setting/updating in-memory proxy mappings
 
         service_fn(move |mut req: Request<Body>| {
             let req_path_and_query = req
