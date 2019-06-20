@@ -20,7 +20,6 @@ extern crate log;
 extern crate fern;
 #[macro_use]
 extern crate diesel;
-extern crate dotenv;
 extern crate regex;
 extern crate serde;
 extern crate serde_json;
@@ -157,8 +156,6 @@ fn setup_logger() {
 }
 
 fn main() {
-    dotenv::dotenv().expect("dotenv file parsing failed");
-
     setup_logger();
 
     let proxy_deployments: Arc<Mutex<HashMap<String, ProxyDeployment>>> = Arc::new(Mutex::new(HashMap::new()));
