@@ -151,8 +151,7 @@ fn setup_logger() {
         .level_for("mio", log::LevelFilter::Info)
         .level_for("tokio_core", log::LevelFilter::Info)
         .level_for("tokio_reactor", log::LevelFilter::Info)
-        .chain(fern::log_file("/dev/stderr").expect("Error chaining Fern output to /dev/stderr"))
-        .chain(fern::log_file("/tmp/phost-proxy.log").expect("Error chaining Fern output to /tmp/phost-proxy.log"))
+        .chain(fern::log_file("/dev/stdout").expect("Error chaining Fern output to /dev/stdout"))
         .apply()
         .expect("Failed to apply Ferm dispatch");
 }

@@ -1,18 +1,22 @@
 """Contains functions for interacting with the Rust proxy server child"""
 
 import signal
-import subprocess
-from subprocess import Popen, PIPE, DEVNULL
+from subprocess import Popen, DEVNULL
 import os
+
+from django.conf import settings
 
 
 CHILD_PID = None
 
 
 def spawn_proxy_server():
-    """ Spawns the proxy server and saves its PID """
+    """ Spawns the proxy server and saves its PID so that we can communicate with it later """
 
-    handle = Popen(["phost-proxy"], stdin=DEVNULL, stdout=PIPE, stderr=PIPE)
+    output_file_handle = open(settings.PROXY_SERVER_LOG_FILE, "w")
+    handle = Popen(
+        ["phost-proxy"], stdin=DEVNULL, stdout=output_file_handle, stderr=output_file_handle
+    )
 
     global CHILD_PID
     CHILD_PID = handle.pid
@@ -24,3 +28,4 @@ def trigger_proxy_server_update():
         return
 
     os.kill(CHILD_PID, signal.SIGUSR1)
+

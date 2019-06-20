@@ -94,6 +94,8 @@ DATABASES = {
     }
 }
 
+PROXY_SERVER_LOG_FILE = os.environ.get("PROXY_SERVER_LOG_FILE") or "/tmp/phost-proxy.log"
+
 
 # Password validation
 # https://docs.djangoproject.com/en/2.1/ref/settings/#auth-password-validators
