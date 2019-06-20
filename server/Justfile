@@ -1,6 +1,3 @@
-build-docker:
-  docker build -t phost .
-
 run-docker:
   docker kill phost || true
   docker rm phost || true
