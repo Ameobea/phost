@@ -170,7 +170,7 @@ def list_proxies():
     table_data = map(
         lambda datum: [
             datum["name"],
-            "{}://{}.{}/".format(
+            "{}://{}.p.{}/".format(
                 STATE.conf["hosting_protocol"], datum["subdomain"], STATE.conf["hosting_base_url"]
             ),
             dateutil.parser.parse(datum["created_on"]).strftime("%Y-%m-%d"),

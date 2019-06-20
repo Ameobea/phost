@@ -1,4 +1,5 @@
-FROM debian:jessie AS builder
+# This has to match with the inner container due to shared library mismatches etc.
+FROM ubuntu:18.04 AS builder
 
 RUN apt-get update && apt-get install -y curl libmysqlclient-dev build-essential libssl-dev pkg-config
 RUN update-ca-certificates
@@ -15,7 +16,8 @@ WORKDIR /proxy
 RUN cargo build --release
 
 # Adapted from https://github.com/ramkulkarni1/django-apache2-docker/blob/master/Dockerfile
-FROM debian:jessie
+# This has to match with the inner container due to shared library mismatches etc.
+FROM ubuntu:18.04
 
 COPY --from=builder \
   /proxy/target/release/phost-proxy \
