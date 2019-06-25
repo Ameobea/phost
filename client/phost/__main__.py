@@ -11,7 +11,7 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from terminaltables import SingleTable
 import dateutil.parser
 
-from .config import load_conf, load_cookies, save_cookies
+from .config import load_conf, load_cookies, save_cookies, init_config
 from .upload import compress_dir
 from .util import compose, slugify, create_random_subdomain
 
@@ -201,23 +201,21 @@ def delete_proxy(query, lookup_field):
 
 
 @click.group()
-@click.option(
-    "--config",
-    "-c",
-    type=click.File(encoding="utf-8"),
-    default=os.path.expanduser("~/.phost/conf.toml"),
-)
+@click.option("--config", "-c", type=click.Path(), default=os.path.expanduser("~/.phost/conf.toml"))
 def main(config):
+    # Create empty config file + initialize with defaults if it doesn't exist
+    config_file = init_config(config)
+
     global STATE  # pylint: disable=W0603
-    STATE = GlobalAppState(config)
+    STATE = GlobalAppState(config_file)
 
 
-@main.group("deployment")
+@main.group("deployment", help="Manage static subdomain deployments")
 def deployment():
     pass
 
 
-@main.group("proxy")
+@main.group("proxy", help="Manage HTTP proxies")
 def proxy():
     pass
 
@@ -225,7 +223,11 @@ def proxy():
 with_query_lookup_decorators = compose(
     click.argument("query"),
     click.option(
-        "--name", "lookup_field", flag_value="name", default=True, help="Look up deployment by name"
+        "--name",
+        "lookup_field",
+        flag_value="name",
+        default=True,
+        help="Look up deployment by name (default)",
     ),
     click.option(
         "--id", "lookup_field", flag_value="id", default=False, help="Look up deployment by ID"
@@ -259,9 +261,16 @@ def list_deployments_deployment():
     list_deployments()
 
 
-@main.command("ls")
+@main.command("ls", help="Shorthand for `phost deployment ls`")
 def list_deployments_main():
     list_deployments()
+
+
+@with_query_lookup_decorators
+@main.command("show", help="Shorthand for `phost deployment show`")
+def show_deployment_main(query, lookup_field):
+    deployment_data = STATE.api_call("deployments/{}/?lookupField={}".format(query, lookup_field))
+    print(json.dumps(deployment_data, indent=4))
 
 
 @deployment.command("rm")
@@ -270,7 +279,7 @@ def delete_deployment_deployment(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
 
 
-@main.command("rm")
+@main.command("rm", help="Shorthand for `phost deployment rm`")
 @delete_deployment_decorators
 def delete_deployment_main(query, lookup_field, version):
     delete_deployment(query, lookup_field, version)
@@ -377,7 +386,7 @@ create_deployment_decorators = compose(
 )
 
 
-@main.command("create")
+@main.command("create", help="Shorthand for `phost deployment create`")
 @create_deployment_decorators
 def create_deployment_main(
     name, subdomain, directory, version, private, category, spa, not_found_document
@@ -421,7 +430,7 @@ def update_deployment_deployment(query, lookup_field, version, directory):
     update_deployment(query, lookup_field, version, directory)
 
 
-@main.command("update")
+@main.command("update", help="Shorthand for `phost deployment update`")
 @with_update_deployment_decorators
 def update_deployment_main(query, lookup_field, version, directory):
     update_deployment(query, lookup_field, version, directory)

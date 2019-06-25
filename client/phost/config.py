@@ -28,20 +28,24 @@ def save_cookies(cookies: dict):
         f.write(toml.dumps(cookies))
 
 
-def init_config():
-    pathlib.Path(CONFIG_DIR_PATH).mkdir(parents=False, exist_ok=True)
+def init_config(conf_file_path):
+    if not os.path.isfile(conf_file_path):
+        pathlib.Path(os.path.dirname(conf_file_path)).mkdir(parents=False, exist_ok=True)
 
-    # Initialize config file with default config if it's empty
-    if not os.path.isfile(CONF_FILE_PATH):
+        # Initialize config file with default config if it's empty
         default_conf_toml = toml.dumps(DEFAULT_CONF)
-        with open(CONF_FILE_PATH, "w") as f:
+        with open(conf_file_path, "w") as f:
             f.write(default_conf_toml)
+            print(
+                f"Created default config file: {conf_file_path}; you must fill in the values yourself."
+            )
+            exit(1)
 
-    return open(CONF_FILE_PATH, "r")
+    return open(conf_file_path, "r")
 
 
 def load_conf(conf_file) -> dict:
-    conf_file = conf_file or init_config()
+
     conf_toml = conf_file.read()
     conf_file.close()
 
