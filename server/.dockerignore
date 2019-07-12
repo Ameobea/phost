@@ -4,3 +4,6 @@ Dockerfile
 *.pyc
 __pycache__
 hosted
+digitalocean_creds.ini
+.env
+hosted
