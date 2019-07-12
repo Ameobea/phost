@@ -403,7 +403,13 @@ class ProxyDeployments(TemplateView):
             destination_address=form.cleaned_data["destination_address"],
             use_cors_headers=use_cors_headers,
         )
-        proxy_deployment_descriptor.save()
+        try:
+            proxy_deployment_descriptor.save()
+        except IntegrityError as e:
+            if "Duplicate entry" in str(e):
+                raise BadInputException("`name` and `subdomain` must be unique!")
+            else:
+                raise e
 
         trigger_proxy_server_update()
 
