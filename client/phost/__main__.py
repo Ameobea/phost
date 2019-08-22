@@ -424,13 +424,21 @@ def update_deployment(query, lookup_field, version, directory):
     print("Deployment successfully updated")
 
 
-@deployment.command("update")
+update_help = (
+    "\nVERSION: The new version to deploy.  This takes some special values:"
+    " \t\n\t - patch/p: Increments the patch version of the current version"
+    " \t\n\t - minor/m: Increments the minor version of the current version"
+    " \t\n\t - major/M: Increments the major version of the current version"
+)
+
+
+@deployment.command("update", help=update_help)
 @with_update_deployment_decorators
 def update_deployment_deployment(query, lookup_field, version, directory):
     update_deployment(query, lookup_field, version, directory)
 
 
-@main.command("update", help="Shorthand for `phost deployment update`")
+@main.command("update", help="Shorthand for `phost deployment update`\n\n" + update_help)
 @with_update_deployment_decorators
 def update_deployment_main(query, lookup_field, version, directory):
     update_deployment(query, lookup_field, version, directory)

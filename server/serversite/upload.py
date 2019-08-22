@@ -2,8 +2,6 @@
 Utilities for dealing with uploaded deployment archives
 """
 
-import tempfile
-from subprocess import CalledProcessError
 import os
 import pathlib
 import shutil
@@ -11,7 +9,6 @@ import tarfile
 
 from django.conf import settings
 
-from .validation import BadInputException
 
 HOST_DIR = settings.HOST_PATH
 

@@ -2,3 +2,4 @@ django
 mysqlclient
 pylint_django
 python-dotenv~=0.10.3
+semver~=2.8.1

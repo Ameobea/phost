@@ -19,6 +19,7 @@ from django.utils.datastructures import MultiValueDictKeyError
 from django.http.request import HttpRequest
 from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import TemplateView
+import semver
 
 from .models import StaticDeployment, DeploymentVersion, DeploymentCategory, ProxyDeployment
 from .forms import StaticDeploymentForm, ProxyDeploymentForm
@@ -256,6 +257,21 @@ class Deployment(TemplateView):
 
 
 class DeploymentVersionView(TemplateView):
+    @staticmethod
+    def is_version_special(version: str) -> bool:
+        return version in ["minor", "m", "patch", "p", "major", "M"]
+
+    @staticmethod
+    def transform_special_version(special_version: str, previous_version: str) -> str:
+        if special_version in ["patch", "p"]:
+            return semver.bump_patch(previous_version)
+        elif special_version in ["minor", "m"]:
+            return semver.bump_minor(previous_version)
+        elif special_version in ["major", "M"]:
+            return semver.bump_major(previous_version)
+        else:
+            raise "Unreachable: `transform_special_version` should never be called with invalid special version"
+
     @with_caught_exceptions
     def get(
         self, req: HttpRequest, *args, deployment_id=None, version=None
@@ -272,16 +288,25 @@ class DeploymentVersionView(TemplateView):
         deployment = get_or_none(StaticDeployment, **query_dict)
 
         # Assert that the new version is unique among other versions for the same deployment
-        if DeploymentVersion.objects.filter(deployment=deployment, version=version):
+        if (not self.is_version_special(version)) and DeploymentVersion.objects.filter(
+            deployment=deployment, version=version
+        ):
             raise BadInputException("The new version name must be unique.")
 
         version_model = None
         with transaction.atomic():
             # Set any old active deployment as inactive
-            old_version = DeploymentVersion.objects.get(deployment=deployment, active=True)
-            if old_version:
-                old_version.active = False
-                old_version.save()
+            old_version_model = DeploymentVersion.objects.get(deployment=deployment, active=True)
+            if old_version_model:
+                old_version_model.active = False
+                old_version_model.save()
+
+            # Transform special versions by bumping the previous semver version
+            if self.is_version_special(version):
+                try:
+                    version = self.transform_special_version(version, old_version_model.version)
+                except Exception as e:
+                    raise BadInputException(e)
 
             # Create the new version and set it active
             version_model = DeploymentVersion(version=version, deployment=deployment, active=True)
