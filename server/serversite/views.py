@@ -287,6 +287,11 @@ class DeploymentVersionView(TemplateView):
         query_dict = get_query_dict(deployment_id, req)
         deployment = get_or_none(StaticDeployment, **query_dict)
 
+        if not req.FILES["file"]:
+            raise BadInputException(
+                "No multipart file named `file` found in request; this must be provided."
+            )
+
         # Assert that the new version is unique among other versions for the same deployment
         if (not self.is_version_special(version)) and DeploymentVersion.objects.filter(
             deployment=deployment, version=version

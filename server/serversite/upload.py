@@ -61,7 +61,7 @@ def handle_uploaded_static_archive(file, subdomain: str, version: str, init=True
 
         return dst_dir
     except Exception as e:
-        print("Error while creating deployment from tar archive")
+        print("Error while creating deployment from tar archive:")
         print(e)
 
         directory_to_delete = os.path.join(HOST_DIR, subdomain) if init else dst_dir

@@ -31,6 +31,15 @@ class GlobalAppState(object):
         self.session.cookies.update(load_cookies())
 
     def make_request(self, method: str, *args, json_body=None, form_data=None, multipart_data=None):
+        # If we are re-trying a request that has multipart file data, we need to reset the seek position
+        # for all of those files to the beginning since it is advanced during request building.
+        if multipart_data:
+            for val in multipart_data.values():
+                if hasattr(val, "tell") and hasattr(val, "seek"):
+                    needs_seek_reset = val.tell() != 0
+                    if needs_seek_reset:
+                        val.seek(0)
+
         (func, kwargs) = {
             "POST": (
                 self.session.post,
