@@ -1,13 +1,4 @@
-#![feature(
-    box_syntax,
-    proc_macro_hygiene,
-    decl_macro,
-    slice_patterns,
-    bind_by_move_pattern_guards,
-    box_patterns,
-    nll,
-    try_trait
-)]
+#![feature(box_syntax, proc_macro_hygiene, decl_macro, box_patterns, nll, try_trait)]
 
 extern crate chrono;
 extern crate futures;
@@ -152,7 +143,7 @@ fn setup_logger() {
         .level_for("tokio_reactor", log::LevelFilter::Info)
         .chain(fern::log_file("/dev/stdout").expect("Error chaining Fern output to /dev/stdout"))
         .apply()
-        .expect("Failed to apply Ferm dispatch");
+        .expect("Failed to apply Fern dispatch");
 }
 
 fn main() {
