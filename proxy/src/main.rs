@@ -1,4 +1,4 @@
-#![feature(box_syntax, proc_macro_hygiene, decl_macro, box_patterns, nll, try_trait)]
+#![feature(proc_macro_hygiene, decl_macro)]
 
 extern crate chrono;
 extern crate futures;
