@@ -1,3 +1,5 @@
 *.pyc
 __pycache__
 phost.egg-info
+build
+dist
