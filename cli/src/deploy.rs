@@ -409,6 +409,12 @@ pub fn deploy(conf: &Conf, push: bool) -> Result<()> {
         .context("no deploy target configured (.phost.toml [deploy] or conf.toml [docker])")?;
     let target = SshHost::parse(target_str)?;
 
+    if let Some(env_file) = &pc.deploy.run.env_file {
+        if !root.join(env_file).is_file() {
+            bail!("env_file {} not found", root.join(env_file).display());
+        }
+    }
+
     let git_state = preflight(&root, push)?;
     let short_sha = &git_state.sha[..12];
     let name = &pc.app.name;
@@ -443,10 +449,7 @@ pub fn deploy(conf: &Conf, push: bool) -> Result<()> {
     let swap_runner = Runner::Remote { host: SshHost::parse(target_str)?, forward_agent: false };
     if let Some(env_file) = &pc.deploy.run.env_file {
         let local_path = root.join(env_file);
-        if !local_path.is_file() {
-            bail!("env_file {} not found", local_path.display());
-        }
-        swap_runner.run(&format!("mkdir -p \"$HOME\"/.phost/env"))?;
+        swap_runner.run("mkdir -p \"$HOME\"/.phost/env")?;
         let mut scp = Command::new("scp");
         scp.args(["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/phost-%C", "-o", "ControlPersist=10m", "-q"]);
         if let Some(p) = target.port {

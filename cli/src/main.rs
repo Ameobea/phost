@@ -19,7 +19,7 @@ const UPDATE_HELP: &str = "VERSION: The new version to deploy.  This takes some 
  - major/M: Increments the major version of the current version";
 
 #[derive(Parser)]
-#[command(name = "phost", disable_version_flag = true)]
+#[command(name = "phost", version)]
 struct Cli {
     #[arg(short = 'c', long = "config")]
     config: Option<PathBuf>,
@@ -390,6 +390,9 @@ fn run(cmd: Cmd, conf: config::Conf) -> Result<()> {
 }
 
 fn main() {
+    // Die quietly instead of panicking when stdout is closed early (`phost ls | head`)
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+
     let cli = Cli::parse();
 
     let result = (|| -> Result<()> {
