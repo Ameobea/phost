@@ -1,0 +1,13 @@
+[app]
+name = "phost-tunnel"
+
+[build]
+commands = ["cd .. && docker build -f Dockerfile.tunnel -t phost-tunnel:latest ."]
+image = "phost-tunnel:latest"
+
+[deploy]
+health = { url = "http://localhost:4301/__phost_control", timeout_secs = 15 }
+
+[deploy.run]
+net = "host"
+cmd = ["tunnel-server"]

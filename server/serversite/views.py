@@ -21,8 +21,8 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import TemplateView
 import semver
 
-from .models import StaticDeployment, DeploymentVersion, DeploymentCategory, ProxyDeployment
-from .forms import StaticDeploymentForm, ProxyDeploymentForm
+from .models import StaticDeployment, DeploymentVersion, DeploymentCategory
+from .forms import StaticDeploymentForm
 from .upload import (
     handle_uploaded_static_archive,
     update_symlink,
@@ -39,7 +39,6 @@ from .validation import (
     InvalidCredentials,
     validate_subdomain,
 )
-from .proxy import trigger_proxy_server_update
 
 # Used to get the name of the deployment into which a given URL points
 REDIRECT_URL_RGX = re.compile("^/__HOSTED/([^/]+)/.*$")
@@ -407,62 +406,3 @@ def not_found(req):
         )
 
     return send_data(document_path)
-
-
-class ProxyDeployments(TemplateView):
-    @with_caught_exceptions
-    @with_login_required
-    def get(self, request: HttpRequest):
-        all_proxy_deployments = ProxyDeployment.objects.all()
-        return serialize(all_proxy_deployments)
-
-    @with_caught_exceptions
-    @with_login_required
-    def post(self, request: HttpRequest):
-        form = get_validated_form(ProxyDeploymentForm, request)
-
-        name = form.cleaned_data["name"]
-        subdomain = form.cleaned_data["subdomain"]
-        use_cors_headers = form.cleaned_data["use_cors_headers"] or False
-        validate_deployment_name(name)
-        validate_subdomain(subdomain)
-
-        proxy_deployment_descriptor = ProxyDeployment(
-            name=name,
-            subdomain=subdomain,
-            destination_address=form.cleaned_data["destination_address"],
-            use_cors_headers=use_cors_headers,
-        )
-        try:
-            proxy_deployment_descriptor.save()
-        except IntegrityError as e:
-            if "Duplicate entry" in str(e):
-                raise BadInputException("`name` and `subdomain` must be unique!")
-            else:
-                raise e
-
-        trigger_proxy_server_update()
-
-        return JsonResponse(
-            {"name": name, "subdomain": subdomain, "url": proxy_deployment_descriptor.get_url()}
-        )
-
-
-class ProxyDeploymentView(TemplateView):
-    @with_caught_exceptions
-    def get(self, req: HttpRequest, deployment_id=None):
-        query_dict = get_query_dict(deployment_id, req)
-        deployment = get_or_none(StaticDeployment, **query_dict)
-
-        return serialize(deployment)
-
-    @with_caught_exceptions
-    @with_login_required
-    @with_default_success
-    def delete(self, req: HttpRequest, deployment_id=None):
-        query_dict = get_query_dict(deployment_id, req)
-        proxy_deployment = get_or_none(ProxyDeployment, **query_dict)
-
-        proxy_deployment.delete()
-
-        trigger_proxy_server_update()

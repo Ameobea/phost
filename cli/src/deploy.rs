@@ -190,35 +190,39 @@ fn find_project_conf() -> Result<(ProjectConf, PathBuf)> {
 struct GitState {
     branch: String,
     sha: String,
+    dirty: bool,
 }
 
-fn preflight(root: &Path, push: bool) -> Result<GitState> {
-    if !git(root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
+fn preflight(root: &Path, push: bool, allow_dirty: bool) -> Result<GitState> {
+    let dirty = !git(root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty();
+    if dirty && !allow_dirty {
         bail!("tracked files have uncommitted changes; commit or stash first");
     }
 
     let branch = git(root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    if branch == "HEAD" {
+    if branch == "HEAD" && !allow_dirty {
         bail!("detached HEAD; check out a branch first");
     }
     let sha = git(root, &["rev-parse", "HEAD"])?;
 
-    git(root, &["fetch", "--quiet"]).context("git fetch failed")?;
+    if !allow_dirty {
+        git(root, &["fetch", "--quiet"]).context("git fetch failed")?;
 
-    if push {
-        let status = Command::new("git").arg("-C").arg(root).arg("push").status()?;
-        if !status.success() {
-            bail!("git push failed");
+        if push {
+            let status = Command::new("git").arg("-C").arg(root).arg("push").status()?;
+            if !status.success() {
+                bail!("git push failed");
+            }
+        }
+
+        let upstream = git(root, &["rev-parse", "@{u}"])
+            .context("no upstream configured for this branch")?;
+        if upstream != sha {
+            bail!("HEAD is not pushed to upstream; `git push` first or re-run with --push");
         }
     }
 
-    let upstream = git(root, &["rev-parse", "@{u}"])
-        .context("no upstream configured for this branch")?;
-    if upstream != sha {
-        bail!("HEAD is not pushed to upstream; `git push` first or re-run with --push");
-    }
-
-    Ok(GitState { branch, sha })
+    Ok(GitState { branch, sha, dirty })
 }
 
 fn tunnel_clause(tunnels: &[String], target: &SshHost) -> String {
@@ -391,7 +395,7 @@ done
     )
 }
 
-pub fn deploy(conf: &Conf, push: bool) -> Result<()> {
+pub fn deploy(conf: &Conf, push: bool, allow_dirty: bool) -> Result<()> {
     let (pc, root) = find_project_conf()?;
     let docker_conf = conf
         .docker
@@ -401,6 +405,9 @@ pub fn deploy(conf: &Conf, push: bool) -> Result<()> {
         .builder
         .as_deref()
         .context("no builder configured in [docker] section of ~/.phost/conf.toml")?;
+    if allow_dirty && builder != "local" {
+        bail!("--dirty requires builder = \"local\"; remote builders check out from git and can't see uncommitted changes");
+    }
     let target_str = pc
         .deploy
         .target
@@ -415,8 +422,12 @@ pub fn deploy(conf: &Conf, push: bool) -> Result<()> {
         }
     }
 
-    let git_state = preflight(&root, push)?;
-    let short_sha = &git_state.sha[..12];
+    let git_state = preflight(&root, push, allow_dirty)?;
+    let short_sha = format!(
+        "{}{}",
+        &git_state.sha[..12],
+        if git_state.dirty { "-dirty" } else { "" }
+    );
     let name = &pc.app.name;
     let repo = pc.build.image.split(':').next().unwrap().to_string();
     let tag = format!("{repo}:{short_sha}");

@@ -1,0 +1,28 @@
+[app]
+name = "phost"
+
+[build]
+commands = ["just build-docker"]
+image = "phost:latest"
+
+[deploy]
+health = { url = "http://localhost:4300/" }
+
+[deploy.run]
+ports = ["4300:80"]
+volumes = [
+  "/opt/phost:/var/www/hosted",
+  "/opt/s3fs-private/agirls:/opt/s3fs-private/agirls",
+  "/opt/s3fs-private/robintrack-data:/opt/s3fs-private/robintrack-data",
+  "/opt/s3fs-private/ext-data:/opt/s3fs-private/ext-data",
+]
+env_file = ".env.prod"
+
+[deploy.run.env]
+DB_DATABASE = "project-hoster"
+DB_HOST = "nelebrie2.ameo.dev"
+DB_USERNAME = "project-hoster"
+PROTOCOL = "https"
+ROOT_URL = "ameo.design"
+HOST_PATH = "/var/www/hosted"
+PROXY_SERVER_LOG_FILE = "/tmp/phost-proxy.log"

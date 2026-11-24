@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod deploy;
+mod tunnel;
 mod util;
 
 use std::path::PathBuf;
@@ -100,26 +101,14 @@ struct UpdateArgs {
 }
 
 #[derive(Args)]
-struct ProxyCreateArgs {
-    name: String,
-    target_url: String,
-    /// The subdomain on which the proxy will be mounted.  If left off, the subdomain will be
-    /// constructed from the proxy name.
-    #[arg(short = 's', long)]
-    subdomain: Option<String>,
-    /// Use a randomized subdomain
-    #[arg(short = 'p', long)]
-    private: bool,
-    /// Enable CORS headers on the proxy
-    #[arg(short = 'c', long)]
-    cors: bool,
-}
-
-#[derive(Args)]
 struct DeployArgs {
     /// Push the current branch to its upstream before deploying
     #[arg(long)]
     push: bool,
+    /// Allow deploying uncommitted/unpushed changes.  Only valid when the builder is "local"
+    /// since remote builders check out from git.
+    #[arg(long, conflicts_with = "push")]
+    dirty: bool,
 }
 
 #[derive(Args)]
@@ -155,9 +144,10 @@ enum Cmd {
     /// Manage static subdomain deployments
     #[command(subcommand)]
     Deployment(DeploymentCmd),
-    /// Manage HTTP proxies
-    #[command(subcommand)]
-    Proxy(ProxyCmd),
+    /// Expose a locally running service on a public subdomain
+    Tunnel(tunnel::client::TunnelArgs),
+    /// Run the server-side tunnel daemon
+    TunnelServer(tunnel::server::TunnelServerArgs),
 }
 
 #[derive(Subcommand)]
@@ -168,13 +158,6 @@ enum DeploymentCmd {
     Update(UpdateArgs),
     Rm(RmArgs),
     Show(Lookup),
-}
-
-#[derive(Subcommand)]
-enum ProxyCmd {
-    Ls,
-    Create(ProxyCreateArgs),
-    Rm(Lookup),
 }
 
 fn resolve_subdomain(explicit: Option<String>, private: bool, name: &str) -> Result<String> {
@@ -188,13 +171,10 @@ fn resolve_subdomain(explicit: Option<String>, private: bool, name: &str) -> Res
     }
 }
 
-fn deployment_url(api: &Api, subdomain: &str, proxy: bool) -> String {
+fn deployment_url(api: &Api, subdomain: &str) -> String {
     format!(
-        "{}://{}.{}{}/",
-        api.conf.hosting_protocol,
-        subdomain,
-        if proxy { "p." } else { "" },
-        api.conf.hosting_base_url
+        "{}://{}.{}/",
+        api.conf.hosting_protocol, subdomain, api.conf.hosting_base_url
     )
 }
 
@@ -238,7 +218,7 @@ fn list_deployments(api: &mut Api) -> Result<()> {
 
         rows.push(vec![
             d["name"].as_str().unwrap_or("").to_string(),
-            deployment_url(api, d["subdomain"].as_str().unwrap_or(""), false),
+            deployment_url(api, d["subdomain"].as_str().unwrap_or("")),
             date_part(&d["created_on"]),
             active_version,
             all_versions,
@@ -322,56 +302,23 @@ fn update_deployment(api: &mut Api, args: &UpdateArgs) -> Result<()> {
     Ok(())
 }
 
-fn list_proxies(api: &mut Api) -> Result<()> {
-    let proxies = api.call(Method::GET, "proxy/", &Body::None)?;
-
-    let mut rows = vec![["Name", "URL", "Creation Date"].map(String::from).to_vec()];
-    for p in proxies.as_array().cloned().unwrap_or_default() {
-        rows.push(vec![
-            p["name"].as_str().unwrap_or("").to_string(),
-            deployment_url(api, p["subdomain"].as_str().unwrap_or(""), true),
-            date_part(&p["created_on"]),
-        ]);
-    }
-
-    print_table(&rows);
-    Ok(())
-}
-
-fn create_proxy(api: &mut Api, args: ProxyCreateArgs) -> Result<()> {
-    let subdomain = resolve_subdomain(args.subdomain, args.private, &args.name)?;
-
-    let fields = vec![
-        ("name", args.name),
-        ("subdomain", subdomain),
-        ("use_cors_headers", if args.cors { "True".into() } else { "False".into() }),
-        ("destination_address", args.target_url),
-    ];
-    let res = api.call(Method::POST, "proxy/", &Body::Multipart { fields, file: None })?;
-    println!("Proxy successfully created: {}", res["url"].as_str().unwrap_or(""));
-    Ok(())
-}
-
-fn delete_proxy(api: &mut Api, lookup: &Lookup) -> Result<()> {
-    let path = format!("proxy/{}/?lookupField={}", lookup.query, lookup.field());
-    api.call(Method::DELETE, &path, &Body::None)?;
-
-    println!("Proxy successfully deleted");
-    Ok(())
-}
-
 fn run(cmd: Cmd, conf: config::Conf) -> Result<()> {
-    match &cmd {
-        Cmd::Deploy(args) => return deploy::deploy(&conf, args.push),
+    match cmd {
+        Cmd::Deploy(args) => return deploy::deploy(&conf, args.push, args.dirty),
         Cmd::Rollback => return deploy::rollback(&conf),
         Cmd::Status => return deploy::status(&conf),
         Cmd::Logs(args) => return deploy::logs(&conf, args.follow, args.tail),
+        Cmd::Tunnel(args) => return tunnel::client::run(&conf, args),
+        Cmd::TunnelServer(_) => unreachable!("dispatched before conf load"),
         _ => {}
     }
 
     let api = &mut Api::new(conf);
     match cmd {
-        Cmd::Deploy(_) | Cmd::Rollback | Cmd::Status | Cmd::Logs(_) => unreachable!(),
+        Cmd::Deploy(_) | Cmd::Rollback | Cmd::Status | Cmd::Logs(_) | Cmd::Tunnel(_) => {
+            unreachable!()
+        }
+        Cmd::TunnelServer(_) => unreachable!(),
         Cmd::Ls | Cmd::Deployment(DeploymentCmd::Ls) => list_deployments(api),
         Cmd::Show(lookup) | Cmd::Deployment(DeploymentCmd::Show(lookup)) => {
             show_deployment(api, &lookup)
@@ -383,9 +330,6 @@ fn run(cmd: Cmd, conf: config::Conf) -> Result<()> {
         Cmd::Update(args) | Cmd::Deployment(DeploymentCmd::Update(args)) => {
             update_deployment(api, &args)
         }
-        Cmd::Proxy(ProxyCmd::Ls) => list_proxies(api),
-        Cmd::Proxy(ProxyCmd::Create(args)) => create_proxy(api, args),
-        Cmd::Proxy(ProxyCmd::Rm(lookup)) => delete_proxy(api, &lookup),
     }
 }
 
@@ -396,8 +340,14 @@ fn main() {
     let cli = Cli::parse();
 
     let result = (|| -> Result<()> {
-        let conf = config::load_conf(&cli.config.unwrap_or_else(config::default_conf_path))?;
-        run(cli.cmd, conf)
+        // tunnel-server is the one command that runs on the server itself, with no conf file
+        match cli.cmd {
+            Cmd::TunnelServer(args) => tunnel::server::run(args),
+            cmd => {
+                let conf = config::load_conf(&cli.config.unwrap_or_else(config::default_conf_path))?;
+                run(cmd, conf)
+            }
+        }
     })();
 
     if let Err(e) = result {

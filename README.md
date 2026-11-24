@@ -1,6 +1,6 @@
 # phost
 
-`phost` as a utility that provides a range of functionality for deploying content and services on subdomains. It allows for static websites to be deployed from a directory on your local computer with a single command as well as HTTP reverse proxy that allows accessing arbitrary HTTP web services from subdomains as well.
+`phost` as a utility that provides a range of functionality for deploying content and services on subdomains. It allows for static websites to be deployed from a directory on your local computer with a single command, Docker-based applications to be built + deployed remotely, and locally running services to be exposed on public subdomains via ngrok-style tunnels.
 
 ## Features
 
@@ -8,8 +8,10 @@
   - Automatically supports versioning where all previous versions can be accessed via a path extension
   - Supports SPA-style websites where a fallback file is served in the case of a 404
   - Supports randomly generated subdomains
-- Create reverse HTTP proxies to arbitrary endpoints locally or on the internet
-  - Has the option to transparently add in CORS headers to allow for the proxied resource to be accessed from browser applications
+- Expose locally running services on public subdomains: `phost tunnel <port>`
+  - Serves `https://<subdomain>.p.<domain>/` from a single outbound websocket connection; works behind NAT with no ports opened
+  - Supports WebSockets end-to-end and injects CORS headers by default (`--no-cors` to disable)
+  - Picks a random git-short-hash-style subdomain unless `--subdomain` is passed; reconnects automatically
 
 ## Installation
 

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use anyhow::{bail, Result};
 use reqwest::blocking::multipart::{Form, Part};
@@ -22,7 +23,13 @@ pub struct Api {
 
 impl Api {
     pub fn new(conf: Conf) -> Api {
-        Api { client: Client::new(), conf, cookies: load_cookies() }
+        // Deployment uploads can run well past reqwest's default 30s request timeout
+        let client = Client::builder()
+            .timeout(None)
+            .connect_timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build HTTP client");
+        Api { client, conf, cookies: load_cookies() }
     }
 
     pub fn call(&mut self, method: Method, path: &str, body: &Body) -> Result<Value> {
@@ -58,7 +65,7 @@ impl Api {
 
             let res = match req.send() {
                 Ok(res) => res,
-                Err(_) => bail!("Error while communicating with the server's API"),
+                Err(err) => bail!("Error while communicating with the server's API: {err}"),
             };
 
             for sc in res.headers().get_all("set-cookie") {
